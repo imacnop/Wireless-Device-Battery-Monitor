@@ -21,6 +21,7 @@
 #include "drivers.h"
 #include "ble_adverts.h"
 #include "bluetooth_identity.h"
+#include "bluetooth_props.h"
 
 #include <setupapi.h>
 #include <cfgmgr32.h>
@@ -36,9 +37,10 @@
 
 namespace {
 
-const DEVPROPKEY kBtBattery = { { 0x104EA319, 0x6EE2, 0x4701, { 0xBD, 0x47, 0x8D, 0xDB, 0xF4, 0x25, 0xBB, 0xE5 } }, 2 };
-const DEVPROPKEY kIsConnected = { { 0x83DA6326, 0x97A6, 0x4088, { 0x94, 0x53, 0xA1, 0x92, 0x3F, 0x57, 0x3B, 0x29 } }, 15 };
-const DEVPROPKEY kClassOfDevice = { { 0x2BD67D8B, 0x8BEB, 0x48D5, { 0x87, 0xE0, 0x6C, 0xDA, 0x34, 0x28, 0x04, 0x0A } }, 10 };
+using btprops::kClassOfDevice;
+using btprops::kIsConnected;
+using btprops::StripServiceSuffix;
+const DEVPROPKEY& kBtBattery = btprops::kBattery;
 
 const ULONGLONG kQueryEveryMs = 120 * 1000;      // after a successful read
 const ULONGLONG kRetryMs = 60 * 1000;            // first retry after a failed read, doubled after each failure
@@ -55,37 +57,6 @@ bool IsPhoneCategory(const std::wstring& c) { return c == L"Communication.Phone"
 std::wstring Lower(std::wstring s) {
     for (auto& c : s) c = (wchar_t)towlower(c);
     return s;
-}
-
-UINT64 BtAddress(const wchar_t* inst) {  // "BTHENUM\DEV_6CFBED129847" / "BTHLE\DEV_..." -> address, 0 if none
-    const wchar_t* p = wcsstr(inst, L"\\DEV_");
-    if (!p) return 0;
-    p += 5;
-    UINT64 a = 0;
-    for (int i = 0; i < 12; i++) {
-        wchar_t c = p[i];
-        int v = c >= L'0' && c <= L'9' ? c - L'0' : c >= L'A' && c <= L'F' ? c - L'A' + 10 : c >= L'a' && c <= L'f' ? c - L'a' + 10 : -1;
-        if (v < 0) return 0;
-        a = a << 4 | (UINT64)v;
-    }
-    return a;
-}
-
-std::wstring StrProp(HDEVINFO di, SP_DEVINFO_DATA* dd, const DEVPROPKEY& key) {
-    DEVPROPTYPE t;
-    wchar_t buf[256] = {};
-    if (SetupDiGetDevicePropertyW(di, dd, &key, &t, (PBYTE)buf, sizeof(buf) - sizeof(wchar_t), nullptr, 0) &&
-        (t == DEVPROP_TYPE_STRING || t == DEVPROP_TYPE_STRING_LIST))
-        return buf;
-    return L"";
-}
-
-std::wstring StripServiceSuffix(std::wstring n) {
-    for (const wchar_t* suf : { L" Hands-Free AG", L" Hands-Free", L" Avrcp Transport", L" Audio Gateway" }) {
-        size_t l = wcslen(suf);
-        if (n.size() > l && n.compare(n.size() - l, l, suf) == 0) return n.substr(0, n.size() - l);
-    }
-    return n;
 }
 
 struct Phone {
@@ -127,14 +98,14 @@ std::vector<Phone> FindPhones() {
         bool hasConn = SetupDiGetDevicePropertyW(di, &dd, &kIsConnected, &t, (PBYTE)&conn, sizeof(conn), nullptr, 0) &&
                        t == DEVPROP_TYPE_BOOLEAN;
         if (classicMain || leMain) {
-            std::wstring name = StrProp(di, &dd, DEVPKEY_Device_FriendlyName);
+            std::wstring name = btprops::String(di, &dd, DEVPKEY_Device_FriendlyName);
             if (!name.empty() && (p.name.empty() || classicMain)) p.name = name;
-            if (UINT64 a = BtAddress(inst)) (classicMain ? p.classicAddr : p.leAddr) = a;
+            if (UINT64 a = btprops::Address(inst)) (classicMain ? p.classicAddr : p.leAddr) = a;
             UINT32 cod = 0;
             if (SetupDiGetDevicePropertyW(di, &dd, &kClassOfDevice, &t, (PBYTE)&cod, sizeof(cod), nullptr, 0) &&
                 t == DEVPROP_TYPE_UINT32 && IsPhoneClass(cod))
                 p.phone = true;
-            if (IsPhoneCategory(StrProp(di, &dd, DEVPKEY_DeviceContainer_Category))) p.phone = true;
+            if (IsPhoneCategory(btprops::String(di, &dd, DEVPKEY_DeviceContainer_Category))) p.phone = true;
             if (hasConn && conn != DEVPROP_FALSE) p.connected = true;
         }
 
@@ -147,7 +118,7 @@ std::vector<Phone> FindPhones() {
                 p.winPct = pct;
                 p.winLive = live;
             }
-            if (p.name.empty()) p.name = StripServiceSuffix(StrProp(di, &dd, DEVPKEY_Device_FriendlyName));
+            if (p.name.empty()) p.name = StripServiceSuffix(btprops::String(di, &dd, DEVPKEY_Device_FriendlyName));
         }
     }
     SetupDiDestroyDeviceInfoList(di);
