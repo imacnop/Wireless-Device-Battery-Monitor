@@ -13,7 +13,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'release-key.psm1') -Force
-$repo = 'krisgfx9/Wireless-Device-Battery-Monitor'
+$repo = 'imacnop/Wireless-Device-Battery-Monitor'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be MAJOR.MINOR.PATCH, for example 1.2.3.' }
 if (-not (Test-Path -LiteralPath $KeyFile)) { throw "No key file at $KeyFile. Create one with scripts\new-release-key.ps1." }
 if (-not $OutFile) { $OutFile = Join-Path (Get-Location) 'SHA256SUMS.txt.sig' }

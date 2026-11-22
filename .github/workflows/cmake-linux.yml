@@ -33,7 +33,7 @@ jobs:
                 echo 'Unsupported release tag' >&2
                 exit 1
               fi
-              if [ "$GITHUB_REPOSITORY" = "krisgfx9/Wireless-Device-Battery-Monitor" ]; then
+              if [ "$GITHUB_REPOSITORY" = "imacnop/Wireless-Device-Battery-Monitor" ]; then
                 channel=stable
               fi
               ;;

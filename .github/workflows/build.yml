@@ -30,7 +30,7 @@ jobs:
           if ($env:GITHUB_REF -like 'refs/tags/v*') {
             $version = $env:GITHUB_REF_NAME.Substring(1)
             if ($version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Unsupported release tag' }
-            if ($env:GITHUB_REPOSITORY -eq 'krisgfx9/Wireless-Device-Battery-Monitor') { $channel = 'stable' }
+            if ($env:GITHUB_REPOSITORY -eq 'imacnop/Wireless-Device-Battery-Monitor') { $channel = 'stable' }
           }
           "WB_VERSION=$version" >> $env:GITHUB_ENV
           "WB_CHANNEL=$channel" >> $env:GITHUB_ENV
