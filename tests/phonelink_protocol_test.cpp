@@ -147,6 +147,33 @@ int main() {
     std::wstring deep(70,L'[');deep+=L"0";deep+=std::wstring(70,L']');
     assert(!PhoneLink::Parse(deep,reading));
 
+    // French card (Mobile connecté), layout taken from a real Galaxy S26 card: the level sits on an
+    // Image tooltip and on a Container whose TextBlock reads "56 %" (space before "%").
+    const std::wstring french = LR"({
+        "speak": "S26 de Max - Connecté à votre PC",
+        "body": [{"type": "ColumnSet", "columns": [
+            {"type": "Column", "items": [{"type": "Image", "tooltip": "Batterie 56 % restante, économie d'énergie"}]},
+            {"type": "Column", "items": [{"type": "Container", "tooltip": "Batterie 56 % restante, économie d'énergie",
+                "items": [{"type": "TextBlock", "text": "56 %"}]}]}
+        ]}]
+    })";
+    reading = {};
+    assert(PhoneLink::Parse(french, reading));
+    assert(reading.name == L"S26 de Max");
+    assert(reading.percent == 56);
+    assert(!reading.charging);
+
+    reading = {};
+    assert(PhoneLink::Parse(LR"({"speak":"Pixel - Connecté à votre PC","tooltip":"Batterie 80 % restante, en charge","text":"80 %"})", reading));
+    assert(reading.percent == 80 && reading.charging);
+    // An English battery tooltip on a French card is not trusted, and neither is a French
+    // disconnected card.
+    assert(!PhoneLink::Parse(LR"({"speak":"Pixel - Connecté à votre PC","tooltip":"Battery 80% remaining"})", reading));
+    assert(!PhoneLink::Parse(LR"({"speak":"Pixel - Déconnecté","tooltip":"Batterie 80 % restante"})", reading));
+    // English with an extra state after "remaining".
+    assert(PhoneLink::Parse(LR"({"speak":"Pixel - Connected to your PC","tooltip":"Battery 30% remaining, battery saver, charging"})", reading));
+    assert(reading.percent == 30 && reading.charging);
+
     std::puts("Phone Link structural and localization tests passed");
     return 0;
 }

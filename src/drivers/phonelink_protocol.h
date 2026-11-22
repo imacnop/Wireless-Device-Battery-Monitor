@@ -61,98 +61,125 @@ public:
 inline const std::wstring* Field(const Value& v,const wchar_t* key){auto i=v.object.find(key);return i!=v.object.end()&&i->second.kind==L'"'?&i->second.text:nullptr;}
 } // namespace Detail
 
-inline bool ConnectedPhoneName(const std::wstring& speak,
-                               std::wstring& name) {
-    const wchar_t* suffixes[] = {
-        L" - Connected to your PC",
-        L" - PC に接続しました"
+// The card follows the Windows display language. Each locale gives the "connected" suffix of the
+// card's "speak" field and the battery tooltip: "<prefix><n>%<remaining>[, <state>...]".
+//  * English: "Pixel 8 - Connected to your PC", "Battery 73% remaining, charging".
+//  * French (Mobile connecté), from a real card: "S26 de ... - Connecté à votre PC",
+//    "Batterie 56 % restante, économie d'énergie" (a space before "%").
+//  * Japanese (issue #2738): "iPhone - PC に接続しました", "バッテリー 残量 55%".
+struct Locale {
+    const wchar_t* connected;  // ending of "speak" while the phone is connected
+    const wchar_t* prefix;     // battery tooltip start
+    const wchar_t* remaining;  // right after "%" ("" = nothing may follow)
+    const wchar_t* charging;   // a ", "-separated state containing this means charging (null = unknown)
+};
+inline const Locale* Locales(size_t& count) {
+    static const Locale k[] = {
+        { L" - Connected to your PC", L"Battery ", L" remaining", L"charging" },
+        { L" - PC に接続しました", L"バッテリー 残量 ", L"", nullptr },
+        { L" - Connecté à votre PC", L"Batterie ", L" restante", L"en charge" },
     };
-
-    for (const wchar_t* suffix : suffixes) {
-        const std::wstring ending(suffix);
-
-        if (speak.size() > ending.size() &&
-            speak.compare(speak.size() - ending.size(),
-                          ending.size(), ending) == 0) {
-            name = speak.substr(0, speak.size() - ending.size());
-            return !name.empty();
-        }
-    }
-
-    return false;
+    count = sizeof(k) / sizeof(k[0]);
+    return k;
 }
 
-inline int BatteryFromTooltip(const std::wstring& tooltip,
-                              bool& charging) {
-    const std::wstring english = L"Battery ";
-    const std::wstring japanese = L"バッテリー 残量 ";
+// Space allowed between the number and "%" (French typography): space, no-break, narrow no-break.
+inline bool PercentSpace(wchar_t c) { return c == L' ' || c == 0x00A0 || c == 0x202F; }
 
-    bool en = tooltip.compare(0, english.size(), english) == 0;
-    bool ja = tooltip.compare(0, japanese.size(), japanese) == 0;
-
-    if (!en && !ja) return -1;
-
-    size_t start = en ? english.size() : japanese.size();
-    size_t end = start;
-
-    while (end < tooltip.size() &&
-           tooltip[end] >= L'0' && tooltip[end] <= L'9' &&
-           end - start < 3) {
-        ++end;
+// Locale index whose connected suffix ends `speak` (name = the part before it), or -1.
+inline int ConnectedLocale(const std::wstring& speak, std::wstring& name) {
+    size_t count = 0;
+    const Locale* k = Locales(count);
+    for (size_t i = 0; i < count; ++i) {
+        const std::wstring ending(k[i].connected);
+        if (speak.size() > ending.size() && speak.compare(speak.size() - ending.size(), ending.size(), ending) == 0) {
+            name = speak.substr(0, speak.size() - ending.size());
+            return name.empty() ? -1 : (int)i;
+        }
     }
+    return -1;
+}
 
-    if (end == start || end >= tooltip.size() ||
-        tooltip[end] != L'%') return -1;
+inline bool ConnectedPhoneName(const std::wstring& speak, std::wstring& name) { return ConnectedLocale(speak, name) >= 0; }
 
+// Battery level from a tooltip in one locale, or -1.
+inline int BatteryInLocale(const std::wstring& tooltip, const Locale& l, bool& charging) {
+    const std::wstring prefix(l.prefix);
+    if (tooltip.compare(0, prefix.size(), prefix) != 0) return -1;
+    size_t start = prefix.size(), end = start;
+    while (end < tooltip.size() && tooltip[end] >= L'0' && tooltip[end] <= L'9' && end - start < 3) ++end;
+    if (end == start) return -1;
+    size_t pct = end;
+    if (pct < tooltip.size() && PercentSpace(tooltip[pct])) ++pct;
+    if (pct >= tooltip.size() || tooltip[pct] != L'%') return -1;
     int level = std::stoi(tooltip.substr(start, end - start));
     if (level > 100) return -1;
 
-    const std::wstring remainder = tooltip.substr(end + 1);
-
-    if (en) {
-        if (remainder != L" remaining" &&
-            remainder != L" remaining, charging")
-            return -1;
-
-        charging = remainder == L" remaining, charging";
-    } else {
-        if (!remainder.empty()) return -1;
-        charging = false;  // Charging state not established for Japanese cards.
+    const std::wstring rest = tooltip.substr(pct + 1), remaining(l.remaining);
+    charging = false;
+    if (remaining.empty()) return rest.empty() ? level : -1;
+    if (rest.compare(0, remaining.size(), remaining) != 0) return -1;
+    std::wstring states = rest.substr(remaining.size());
+    if (states.empty()) return level;
+    if (states.compare(0, 2, L", ") != 0) return -1;
+    // ", charging", ", battery saver", ", économie d'énergie", ...
+    for (size_t at = 2; at <= states.size();) {
+        size_t comma = states.find(L", ", at);
+        std::wstring state = states.substr(at, comma == std::wstring::npos ? std::wstring::npos : comma - at);
+        if (l.charging && state.find(l.charging) != std::wstring::npos) charging = true;
+        if (comma == std::wstring::npos) break;
+        at = comma + 2;
     }
-
     return level;
 }
 
-
+inline int BatteryFromTooltip(const std::wstring& tooltip, bool& charging) {
+    size_t count = 0;
+    const Locale* k = Locales(count);
+    for (size_t i = 0; i < count; ++i) {
+        int n = BatteryInLocale(tooltip, k[i], charging);
+        if (n >= 0) return n;
+    }
+    return -1;
+}
 
 namespace Detail {
-inline void Battery(const Value& value,bool japanese,int& percent,bool& charging,bool& ambiguous){
-    if(value.kind==L'['){for(const auto& child:value.array)Battery(child,japanese,percent,charging,ambiguous);return;}
+// The visible text next to the icon: "56%" or "56 %".
+inline bool PercentText(const std::wstring& text, int n) {
+    const std::wstring num = std::to_wstring(n);
+    if (text.compare(0, num.size(), num) != 0) return false;
+    size_t at = num.size();
+    if (at < text.size() && PercentSpace(text[at])) ++at;
+    return at + 1 == text.size() && text[at] == L'%';
+}
+inline void Battery(const Value& value,const Locale& locale,int& percent,bool& charging,bool& ambiguous){
+    if(value.kind==L'['){for(const auto& child:value.array)Battery(child,locale,percent,charging,ambiguous);return;}
     if(value.kind!=L'{')return;
     const auto* type=Field(value,L"type");
     if(type && *type!=L"AdaptiveCard" && *type!=L"Container" && *type!=L"ColumnSet" && *type!=L"Column" && *type!=L"TextBlock" && *type!=L"Image")return;
     if(const auto* tooltip=Field(value,L"tooltip")){
-        bool ja=tooltip->rfind(L"バッテリー 残量 ",0)==0, charge=false;
-        int n=ja==japanese?BatteryFromTooltip(*tooltip,charge):-1;
+        bool charge=false;
+        int n=BatteryInLocale(*tooltip,locale,charge);  // only the language of the card's "speak"
         const auto* text=Field(value,L"text");
-        if(n>=0 && (!text || *text==std::to_wstring(n)+L"%")){
+        if(n>=0 && (!text || PercentText(*text,n))){
             if(percent>=0 && (percent!=n||charging!=charge))ambiguous=true;
             percent=n;charging=charge;
         }
     }
     // Only traverse card layout fields, never actions, arbitrary metadata or notification payloads.
-    for(const wchar_t* field:{L"body",L"items",L"columns"}){auto i=value.object.find(field);if(i!=value.object.end())Battery(i->second,japanese,percent,charging,ambiguous);}
+    for(const wchar_t* field:{L"body",L"items",L"columns"}){auto i=value.object.find(field);if(i!=value.object.end())Battery(i->second,locale,percent,charging,ambiguous);}
 }
 } // namespace Detail
 inline bool Parse(const std::wstring& json,Reading& out){
     Detail::Value root;
     if(!Detail::Parser(json).Parse(root)||root.kind!=L'{')return false;
     const auto* speak=Detail::Field(root,L"speak");Reading parsed;
-    if(!speak||!ConnectedPhoneName(*speak,parsed.name))return false;
-    const std::wstring suffix=L" - PC に接続しました";
-    bool ja=speak->size()>=suffix.size() && speak->compare(speak->size()-suffix.size(),suffix.size(),suffix)==0;
+    if(!speak)return false;
+    int locale=ConnectedLocale(*speak,parsed.name);
+    if(locale<0)return false;
+    size_t count=0;
     bool ambiguous=false;
-    Detail::Battery(root,ja,parsed.percent,parsed.charging,ambiguous);
+    Detail::Battery(root,Locales(count)[locale],parsed.percent,parsed.charging,ambiguous);
     if(ambiguous||parsed.percent<0)return false;
     out=std::move(parsed);return true;
 }
