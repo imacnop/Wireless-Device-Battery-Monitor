@@ -31,7 +31,7 @@ namespace {
 const char* kAppId = "com.github.krisgfx9.WirelessBattery";
 const char* kSniPath = "/org/kde/StatusNotifierItem";
 const char* kMenuPath = "/Menu";
-constexpr int kPollSeconds = 60;
+constexpr int kPollSeconds = 30;  // same default as Windows since 1.4.0
 constexpr int kLowBattery = 15;
 constexpr int kIconSize = 64;
 

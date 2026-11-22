@@ -58,7 +58,7 @@ Windows registry (`Software\WirelessBattery`, `DeviceAliases`), using the stable
 device key. Renaming never changes driver matching, protocol queries, or `--list` /
 `--dump` diagnostic output. No account or network access is needed.
 
-Hover for details. Click for the menu: every device (click one to hide or show it), display mode, *Refresh now*, *Start with Windows*, and *Exit*. Levels refresh every 60 seconds (*Check battery every* in the menu changes this), and right away when a device is plugged in or the PC wakes up.
+Hover for details. Click for the menu: every device (click one to hide or show it), display mode, *Refresh now*, *Start with Windows*, and *Exit*. Levels refresh every 30 seconds (*Check battery every* in the menu changes this), and right away when a device is plugged in or the PC wakes up.
 
 ## Smart Battery Alerts (experimental)
 

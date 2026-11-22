@@ -4,6 +4,9 @@ wireless-battery
 *.exe
 *.o
 dist/
+# Release signature written by scripts/sign-release.ps1: uploaded to the release, never committed.
+SHA256SUMS.txt.sig
+*.wbk
 third_party/
 .claude/
 CLAUDE.md

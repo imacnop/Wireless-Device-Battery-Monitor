@@ -102,7 +102,7 @@ int g_chargeLimit = 0;        // "Notify when charged to" 80/85/90%, 0 = off (th
 bool g_shortRuntimeAlert = true;  // "charge today" notification when the time-to-empty is under 12 h (menu option)
 bool g_hoverCard = true;       // card when the mouse rests on a device (off: plain tooltip)
 bool g_hoverChart = true;      // 24-hour chart in that card
-bool g_animateCharging = false;  // charging icons fill in a loop on the taskbar (menu option, PR #2463)
+bool g_animateCharging = true;  // charging icons fill in a loop on the taskbar (menu option, PR #2463; on by default since 1.4.0)
 bool g_trayDeviceIcons = false;  // tray mode: device symbol + level bar instead of the number (PR #1632)
 bool g_runtimeWidget = false;  // optionally show estimated remaining hours instead of % in taskbar widget
 std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all", "main" or one monitor id
@@ -120,7 +120,7 @@ bool g_farLeft = false;      // widget at the left end of the taskbar instead of
 bool g_beforeApps = false;   // widget just left of the taskbar apps (menu option, PR #760)
 bool g_keepMouseLastKnown = false;  // with "Hide last known", still show mice (menu option, PR #1422)
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
-std::atomic<DWORD> g_pollIntervalMs{ 60 * 1000 };  // set from the menu, read by the worker thread
+std::atomic<DWORD> g_pollIntervalMs{ 30 * 1000 };  // set from the menu, read by the worker thread
 bool g_trackSince = false, g_trackAwake = false, g_trackEmpty = false;  // "Battery tracking" menu, off by default
 bool g_demo = false;         // --demo (see DemoDevices)
 
@@ -519,7 +519,7 @@ void SaveTrackAwake(bool on) { SaveBoolSetting(L"TrackAwakeTime", on); }
 bool LoadTrackEmpty() { return LoadBoolSetting(L"TrackTimeToEmpty", false); }
 void SaveTrackEmpty(bool on) { SaveBoolSetting(L"TrackTimeToEmpty", on); }
 DWORD LoadPollSeconds() {
-    DWORD v = 60, sz = sizeof(v);
+    DWORD v = 30, sz = sizeof(v);  // default every 30 s (60 s before 1.4.0); the menu choice is kept
     RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"PollIntervalSeconds", RRF_RT_REG_DWORD, nullptr, &v, &sz);
     return std::clamp<DWORD>(v, 30, 24 * 60 * 60);
 }
@@ -2258,7 +2258,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_trackEmpty = LoadTrackEmpty();
     g_runtimeWidget = LoadRuntimeWidget();
     g_trayDeviceIcons = LoadBoolSetting(L"TrayDeviceIcons", false);
-    g_animateCharging = LoadBoolSetting(L"AnimateCharging", false);
+    g_animateCharging = LoadBoolSetting(L"AnimateCharging", true);
     widget::SetAnimateCharging(g_animateCharging);
     g_widgetBackground = LoadWidgetBackground();
     g_brandColors = LoadBrandColors();
