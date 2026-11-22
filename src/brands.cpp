@@ -134,6 +134,14 @@ bool LogitechModel(const std::wstring& n) {
            iswdigit(n[3]) && (n.size() == 4 || !iswalnum(n[4]));
 }
 
+// Phone names often drop the brand: "S26 de Max", "Z Fold7", "A56 5G" are Samsung Galaxy models
+// (S / A / M / F series with a two-digit number, Z Fold / Z Flip, Note).
+bool SamsungPhoneModel(const std::wstring& n) {
+    if (StartsWith(n, L"z fold") || StartsWith(n, L"z flip") || StartsWith(n, L"note")) return true;
+    return n.size() >= 3 && (n[0] == L's' || n[0] == L'a' || n[0] == L'm' || n[0] == L'f') && iswdigit(n[1]) &&
+           iswdigit(n[2]) && (n.size() == 3 || !iswdigit(n[3]));
+}
+
 // Sony headphones (WH-1000XM5, WF-1000XM4) share PlayStation's vendor id but are not PlayStation gear.
 bool SonyAudio(const std::wstring& n) { return StartsWith(n, L"wh-") || StartsWith(n, L"wf-") || HasWord(n, L"linkbuds"); }
 
@@ -166,6 +174,10 @@ Accent BrandOf(const DeviceStatus& s) {
     if (SonyAudio(n)) return Accent::None;
     for (const auto& r : kNames)
         if (Matches(n, r)) return r.a;
-    if (s.kind == DeviceKind::Phone) return Accent::Android;  // a phone that is not an iPhone (phones.cpp sets Apple's id)
+    if (s.kind == DeviceKind::Phone) {  // phones.cpp sets Apple's / Samsung's id when Bluetooth tells
+        if (n.find(L"iphone") != std::wstring::npos) return Accent::Apple;
+        if (SamsungPhoneModel(n)) return Accent::Galaxy;
+        return Accent::Android;
+    }
     return LogitechModel(n) ? Accent::Logitech : Accent::None;
 }

@@ -6,6 +6,27 @@
 2 ICON "app_light.ico"
 1 24 "app.manifest"
 FLAG_RU BITMAP "flag_ru.bmp"  // Russian flag next to Русский in the Language menu (PR #1754)
+// The other languages' flags, drawn by make_flags.py. Name: FLAG_<language code>, "-" as "_".
+FLAG_EN BITMAP "flag_en.bmp"
+FLAG_DE BITMAP "flag_de.bmp"
+FLAG_ES BITMAP "flag_es.bmp"
+FLAG_FR BITMAP "flag_fr.bmp"
+FLAG_IT_IT BITMAP "flag_it_it.bmp"
+FLAG_HU BITMAP "flag_hu.bmp"
+FLAG_PL BITMAP "flag_pl.bmp"
+FLAG_PT_BR BITMAP "flag_pt_br.bmp"
+FLAG_SV BITMAP "flag_sv.bmp"
+FLAG_VI BITMAP "flag_vi.bmp"
+FLAG_TR BITMAP "flag_tr.bmp"
+FLAG_UK BITMAP "flag_uk.bmp"
+FLAG_HE BITMAP "flag_he.bmp"
+FLAG_AR BITMAP "flag_ar.bmp"
+FLAG_FA BITMAP "flag_fa.bmp"
+FLAG_TH BITMAP "flag_th.bmp"
+FLAG_JA BITMAP "flag_ja.bmp"
+FLAG_ZH_CN BITMAP "flag_zh_cn.bmp"
+FLAG_ZH_TW BITMAP "flag_zh_tw.bmp"
+FLAG_KO BITMAP "flag_ko.bmp"
 
 // The built-in UI languages: lang\*.txt joined by the build (see src/i18n.cpp).
 LANGS RCDATA "languages.txt"

@@ -1587,7 +1587,7 @@ void ShowMenu() {
     i18n::Init();  // picks up language files added since the last time
     auto languages = i18n::Available();
     if (languages.size() > 64) languages.resize(64);
-    HBITMAP russianFlag = LoadBitmapW(g_inst, L"FLAG_RU");  // PR #1754
+    std::vector<HBITMAP> flags;  // FLAG_<code> bitmaps (Russian from PR #1754, the others from res/make_flags.py)
     {
         HMENU sub = CreatePopupMenu();
         AppendMenuW(sub, MF_STRING, ID_LANG_AUTO, T(L"Automatic (Windows language)"));
@@ -1595,10 +1595,13 @@ void ShowMenu() {
         UINT checked = ID_LANG_AUTO;
         for (UINT i = 0; i < languages.size(); i++) {
             AppendMenuW(sub, MF_STRING, ID_LANG_FIRST + i, languages[i].name.c_str());
-            if (russianFlag && _wcsicmp(languages[i].code.c_str(), L"ru") == 0) {
+            std::wstring res = L"FLAG_" + languages[i].code;  // "pt-BR" -> FLAG_PT_BR; user-added languages have none
+            for (auto& ch : res) ch = ch == L'-' ? L'_' : (wchar_t)towupper(ch);
+            if (HBITMAP flag = LoadBitmapW(g_inst, res.c_str())) {
+                flags.push_back(flag);
                 MENUITEMINFOW item{ sizeof(item) };
                 item.fMask = MIIM_BITMAP;
-                item.hbmpItem = russianFlag;
+                item.hbmpItem = flag;
                 SetMenuItemInfoW(sub, ID_LANG_FIRST + i, FALSE, &item);
             }
             if (!i18n::Choice().empty() && _wcsicmp(languages[i].code.c_str(), i18n::Choice().c_str()) == 0) checked = ID_LANG_FIRST + i;
@@ -1658,7 +1661,7 @@ void ShowMenu() {
                                 pt.x, pt.y, g_hwnd, fromTaskbar ? &tpm : nullptr);
     PostMessageW(g_hwnd, WM_NULL, 0, 0);
     DestroyMenu(m);
-    if (russianFlag) DeleteObject(russianFlag);
+    for (HBITMAP flag : flags) DeleteObject(flag);
     memory_trim::Soon();
     switch (cmd) {
         case ID_REFRESH: SetEvent(g_refreshEvt); break;

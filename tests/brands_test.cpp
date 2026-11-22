@@ -44,6 +44,13 @@ int main() {
     Expect(L"bt:{p3}", L"Galaxy S24", 0, K::Phone, Accent::Galaxy);
     Expect(L"bt:{p4}", L"Pixel 8", 0, K::Phone, Accent::Android);
     Expect(L"bt:{p5}", L"Pixel Buds", 0, K::Headset, Accent::None);
+    Expect(L"phonelink", L"S26 de Max", 0, K::Phone, Accent::Galaxy);
+    Expect(L"bt:{p6}", L"Z Fold7", 0, K::Phone, Accent::Galaxy);
+    Expect(L"bt:{p7}", L"A56 5G", 0, K::Phone, Accent::Galaxy);
+    Expect(L"bt:{p8}", L"Mon S26", 0x04E8, K::Phone, Accent::Galaxy);  // Samsung's id from Bluetooth
+    Expect(L"phonelink", L"Telephone de Max", 0, K::Phone, Accent::Android);
+    Expect(L"bt:{p9}", L"S2", 0, K::Phone, Accent::Android);
+    Expect(L"bt:{pa}", L"S260", 0, K::Phone, Accent::Android);
     Expect(L"steam:x", L"Controller", 0, K::Gamepad, Accent::Steam);
     Expect(L"redragon:fa7e", L"Invader Pro", 0, K::Mouse, Accent::Redragon);
     // Vendor ids (HeadsetControl and plain Bluetooth / HID devices).

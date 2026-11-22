@@ -93,7 +93,8 @@ struct Phone {
     std::wstring name;
     bool phone = false;        // class of device or container category says phone
     bool apple = false;
-    bool connected = false;    // a main (BTHENUM\DEV_ / BTHLE\DEV_) node is connected
+    bool samsung = false;
+    bool connected = false;   // a main (BTHENUM\DEV_ / BTHLE\DEV_) node is connected
     UINT64 classicAddr = 0;    // BTHENUM\DEV_ address (public)
     UINT64 leAddr = 0;         // BTHLE\DEV_ address (identity address of the LE pairing)
     int winPct = -1;           // Windows' own level
@@ -119,6 +120,7 @@ std::vector<Phone> FindPhones() {
         p.cid = g;
         std::wstring id = inst;
         if (id.find(L"_VID&0001004C") != std::wstring::npos || id.find(L"_VID&000205AC") != std::wstring::npos) p.apple = true;
+        if (id.find(L"_VID&00010075") != std::wstring::npos) p.samsung = true;  // Bluetooth SIG id of Samsung (seen on a Galaxy S26)
 
         bool classicMain = !wcsncmp(inst, L"BTHENUM\\DEV_", 12), leMain = !wcsncmp(inst, L"BTHLE\\DEV_", 10);
         DEVPROP_BOOLEAN conn = DEVPROP_FALSE;
@@ -262,7 +264,7 @@ void PollPhones(PollContext& ctx) {
         s.name = p.name;
         s.via = L"Bluetooth";
         s.kind = DeviceKind::Phone;
-        s.vid = p.apple ? 0x004C : 0;
+        s.vid = p.apple ? 0x004C : p.samsung ? 0x04E8 : 0;  // brand tint (brands.cpp): Apple, Samsung
         s.detail = p.apple ? L"iPhone (iOS)" : L"Android";
         s.graceSec = 300;
         auto it = g_state.entries.find(p.cid);
