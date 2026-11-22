@@ -11,8 +11,8 @@
 //     do too. Only Battery Level is read: no writes, no notifications. Connecting takes seconds, so the
 //     read runs on its own thread at most every two minutes and the poll reports the cached value, like
 //     marshall.cpp. A phone that never answers is asked less and less often (up to every 15 minutes).
-//  3. A phone that is connected but gives no level either way is still listed in the menu under
-//     "No battery info", so the user sees that it was found.
+//  3. A paired phone that gives no level either way is still listed in the menu under
+//     "No battery info", so the user sees that it was found (unless Phone Link shows a phone).
 //
 // iPhone or Android is told by the Bluetooth Device ID vendor on its service nodes
 // ("_VID&0001004C" = Apple, Bluetooth SIG company id 0x004C), then by the name. The icon is Windows' own
@@ -272,8 +272,14 @@ void PollPhones(PollContext& ctx) {
         else if (p.winPct >= 0 && p.connected) s.percent = p.winPct;
         if (IsDuplicateBluetoothDevice(s, ctx.out)) continue;  // e.g. already shown by Phone Link under its name
         if (s.percent < 0) {
-            if (!p.connected) continue;  // paired but away: nothing to show
-            s.unsupported = true;        // connected, no level: menu only ("No battery info")
+            // Paired, no level (Windows only connects a phone during calls or audio, and most Android
+            // phones have no Battery Service): menu only, under "No battery info", so the user sees it
+            // was found. Not when Phone Link already shows a phone with its level (often the same one
+            // under another name, e.g. "Galaxy S26" there and "S26 de ..." in Bluetooth).
+            bool phoneLink = false;
+            for (const auto& o : ctx.out) phoneLink |= o.key == L"phonelink";
+            if (phoneLink) continue;
+            s.unsupported = true;
         }
         ctx.out.push_back(s);
         ctx.btContainers.insert(p.cid);
