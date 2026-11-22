@@ -15,12 +15,12 @@ jobs:
     runs-on: windows-latest
     steps:
       # Actions are pinned to exact commits so a moved tag cannot swap in different code.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
 
-      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+      - uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0 (Node 24)
         with:
-          msystem: MINGW64
-          install: mingw-w64-x86_64-gcc make
+          msystem: UCRT64  # MINGW64 is deprecated by MSYS2; UCRT is also what WinLibs (build-local.bat) uses
+          install: mingw-w64-ucrt-x86_64-gcc make
 
       - name: Select version and update channel
         shell: pwsh
@@ -86,7 +86,7 @@ jobs:
       # Announce the release on Discord: first what changed, then the newly supported devices.
       # The webhook lives in the DISCORD_WEBHOOK repository secret, never in the code. A failed post
       # does not fail the release.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
         with:
           fetch-depth: 0
       - name: Announce on Discord
