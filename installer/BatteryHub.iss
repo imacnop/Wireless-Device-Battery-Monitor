@@ -75,22 +75,58 @@ begin
   Result := ExpandConstant('{param:WBUPDATE|0}') = '1';
 end;
 
+{ Closes the running app by asking its window to close, the same thing "BatteryHub.exe --quit" does,
+  without starting the installed exe: antivirus programs such as Norton CyberCapture intercept an
+  unsigned exe that is started, lock it while they analyse it, and then setup could not replace it
+  ("DeleteFile failed; code 5. Access is denied."). Waits up to 30 s for the window to go away. }
 function QuitRunningApp(): Boolean;
 var
-  Code: Integer;
+  Wnd: HWND;
+  I: Integer;
 begin
+  Wnd := FindWindowByClassName('WirelessBatteryWnd');
+  if Wnd <> 0 then
+  begin
+    PostMessage(Wnd, 16 { WM_CLOSE }, 0, 0);
+    for I := 1 to 300 do
+    begin
+      if FindWindowByClassName('WirelessBatteryWnd') = 0 then
+        break;
+      Sleep(100);
+    end;
+  end;
+  Result := FindWindowByClassName('WirelessBatteryWnd') = 0;
+end;
+
+{ Deletes the installed exe before the new one is copied, retrying for up to a minute: right after
+  the app closes, or while an antivirus still scans the file, it can stay locked for a while. }
+function FreeOldExe(Name: String): Boolean;
+var
+  Path: String;
+  I: Integer;
+begin
+  Path := ExpandConstant('{app}\') + Name;
   Result := True;
-  if FileExists(ExpandConstant('{app}\BatteryHub.exe')) then
-    Result := Exec(ExpandConstant('{app}\BatteryHub.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0)
-  else if FileExists(ExpandConstant('{app}\WirelessBattery.exe')) then  { upgrading from before the rename }
-    Result := Exec(ExpandConstant('{app}\WirelessBattery.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  if not FileExists(Path) then
+    exit;
+  for I := 1 to 60 do
+  begin
+    if DeleteFile(Path) then
+      exit;
+    Sleep(1000);
+  end;
+  Result := not FileExists(Path);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if IsUpdate() and not QuitRunningApp() then
-    Result := 'BatteryHub could not close. Close it and try updating again.';
+  if not QuitRunningApp() then
+    Result := 'BatteryHub could not close. Close it from its tray menu (Exit) and run Setup again.'
+  else if not FreeOldExe('BatteryHub.exe') or not FreeOldExe('headsetcontrol.exe') then
+    Result := 'Setup cannot replace BatteryHub.exe: another program keeps it locked.' + #13#10#13#10 +
+      'This is usually an antivirus (for example Norton CyberCapture) analysing the file. ' +
+      'Wait for it to finish, or allow BatteryHub in the antivirus, then run Setup again.';
 end;
 
 function InstalledRunValue(): String;
@@ -176,8 +212,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssInstall) and not IsUpdate() then
-    QuitRunningApp();  { upgrade: close the old version so its files can be replaced }
+  { The running app is closed and the old exe freed in PrepareToInstall (updates and manual installs). }
   if CurStep = ssPostInstall then
     MigrateAutostart();
   if (CurStep = ssPostInstall) and not IsUpdate() then
