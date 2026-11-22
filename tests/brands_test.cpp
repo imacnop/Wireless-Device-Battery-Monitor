@@ -38,6 +38,12 @@ int main() {
     Expect(L"jabra:x", L"Evolve2 65", 0, K::Headset, Accent::Jabra);
     Expect(L"jbl:x", L"Quantum 910", 0, K::Headset, Accent::Jbl);
     Expect(L"coolermaster:x", L"MM712", 0, K::Mouse, Accent::CoolerMaster);
+    // Phones over Bluetooth (phones.cpp): Apple's Bluetooth company id or the name, Samsung by name, else Android.
+    Expect(L"bt:{p1}", L"Phone de Max", 0x004C, K::Phone, Accent::Apple);
+    Expect(L"bt:{p2}", L"iPhone 15", 0, K::Phone, Accent::Apple);
+    Expect(L"bt:{p3}", L"Galaxy S24", 0, K::Phone, Accent::Galaxy);
+    Expect(L"bt:{p4}", L"Pixel 8", 0, K::Phone, Accent::Android);
+    Expect(L"bt:{p5}", L"Pixel Buds", 0, K::Headset, Accent::None);
     Expect(L"steam:x", L"Controller", 0, K::Gamepad, Accent::Steam);
     Expect(L"redragon:fa7e", L"Invader Pro", 0, K::Mouse, Accent::Redragon);
     // Vendor ids (HeadsetControl and plain Bluetooth / HID devices).

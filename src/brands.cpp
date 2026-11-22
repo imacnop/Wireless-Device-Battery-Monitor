@@ -26,6 +26,7 @@ const BrandStyle kBrands[] = {
     { Accent::Steam,        L"Steam",        {  26, 159, 255 }, {  11, 111, 191 } },  // #1A9FFF
     { Accent::Redragon,     L"Redragon",     { 230,   0,  18 }, { 192,   0,  15 } },  // #E60012
     { Accent::Wobkey,       L"Wobkey",       {  45,  96, 255 }, {  24,  63, 199 } },  // #2D60FF
+    { Accent::Android,      L"Android",      {  61, 220, 132 }, {  20, 122,  66 } },  // #3DDC84
 };
 
 std::wstring Lower(std::wstring s) {
@@ -165,5 +166,6 @@ Accent BrandOf(const DeviceStatus& s) {
     if (SonyAudio(n)) return Accent::None;
     for (const auto& r : kNames)
         if (Matches(n, r)) return r.a;
+    if (s.kind == DeviceKind::Phone) return Accent::Android;  // a phone that is not an iPhone (phones.cpp sets Apple's id)
     return LogitechModel(n) ? Accent::Logitech : Accent::None;
 }

@@ -156,6 +156,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollPressPlayIcarus(ctx);
     PollHeadsetControl(ctx);
     PollJblSpeaker(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
+    PollPhones(ctx);      // iPhone / Android: before the Bluetooth fallback, which only sees phones with a Windows level
     PollBluetooth(ctx);   // before the generic HID check: Windows' own level wins for the same device
     PollGenericHid(ctx);
     PollArmorX(ctx);  // claims 045E:0B12 so the Xbox fallback skips the dongle's fake "Full" (PR #145)

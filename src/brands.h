@@ -8,6 +8,7 @@ enum class Accent {
     None,
     Razer, Logitech, SteelSeries, Corsair, HyperX, Rog, Zowie,
     PlayStation, Xbox, Galaxy, Apple, Jabra, Jbl, CoolerMaster, Steam, Redragon, Wobkey,
+    Android,  // phones of no other brand here (an iPhone is Apple, a Galaxy is Samsung)
 };
 
 struct BrandColor { unsigned char r, g, b; };

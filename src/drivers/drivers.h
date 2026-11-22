@@ -171,6 +171,7 @@ void PollAirPods(PollContext& ctx);   // Apple AirPods / Beats (AAP L2CAP 1% via
 void ShutdownAirPods();
 std::wstring DumpAirPodsStatus();
 void PollPhoneLink(PollContext& ctx);  // phone linked with Microsoft Phone Link (reads its Start menu card)
+void PollPhones(PollContext& ctx);     // iPhone / Android paired over Bluetooth: Windows' level or the LE Battery Service
 void PollGalaxyBuds(PollContext& ctx); // Samsung Galaxy Buds (Bluetooth RFCOMM, not HID)
 void PollNothingEar(PollContext& ctx); // Nothing / CMF Ear earbuds (Bluetooth RFCOMM NT Link, not HID)
 void PollSonyHeadphones(PollContext& ctx); // Sony WH / WF headphones and earbuds (Bluetooth RFCOMM, not HID)
