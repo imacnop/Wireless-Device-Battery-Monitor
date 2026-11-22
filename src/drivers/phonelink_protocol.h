@@ -169,6 +169,57 @@ inline void Battery(const Value& value,const Locale& locale,int& percent,bool& c
     // Only traverse card layout fields, never actions, arbitrary metadata or notification payloads.
     for(const wchar_t* field:{L"body",L"items",L"columns"}){auto i=value.object.find(field);if(i!=value.object.end())Battery(i->second,locale,percent,charging,ambiguous);}
 }
+
+// First "<n>%" / "<n> %" in a tooltip, whatever the language around it, or -1.
+inline int PercentInTooltip(const std::wstring& t){
+    for(size_t i=0;i<t.size();++i){
+        if(t[i]<L'0'||t[i]>L'9'||(i&&t[i-1]>=L'0'&&t[i-1]<=L'9'))continue;
+        size_t e=i;while(e<t.size()&&t[e]>=L'0'&&t[e]<=L'9'&&e-i<3)++e;
+        if(e<t.size()&&t[e]>=L'0'&&t[e]<=L'9')continue;  // 4+ digits
+        size_t p=e;if(p<t.size()&&PercentSpace(t[p]))++p;
+        if(p<t.size()&&t[p]==L'%'){int n=std::stoi(t.substr(i,e-i));return n<=100?n:-1;}
+    }
+    return -1;
+}
+// A TextBlock reading exactly "<n>%" in this layout element or the ones it holds.
+inline bool HoldsPercentText(const Value& value,int n,int depth=0){
+    if(depth>8)return false;
+    if(value.kind==L'['){for(const auto& c:value.array)if(HoldsPercentText(c,n,depth+1))return true;return false;}
+    if(value.kind!=L'{')return false;
+    const auto* type=Field(value,L"type");
+    if(type && *type==L"TextBlock"){const auto* text=Field(value,L"text");return text && PercentText(*text,n);}
+    for(const wchar_t* field:{L"items",L"columns"}){auto i=value.object.find(field);if(i!=value.object.end()&&HoldsPercentText(i->second,n,depth+1))return true;}
+    return false;
+}
+// Language-independent fallback for card languages not in Locales(): the battery block is a layout
+// element whose tooltip holds "<n>%" and which shows a TextBlock reading exactly "<n>%" (as in the
+// English, Japanese and French cards). Charging is unknown this way.
+inline void StructuralBattery(const Value& value,int& percent,bool& ambiguous){
+    if(value.kind==L'['){for(const auto& child:value.array)StructuralBattery(child,percent,ambiguous);return;}
+    if(value.kind!=L'{')return;
+    const auto* type=Field(value,L"type");
+    if(type && *type!=L"AdaptiveCard" && *type!=L"Container" && *type!=L"ColumnSet" && *type!=L"Column" && *type!=L"TextBlock" && *type!=L"Image")return;
+    if(const auto* tooltip=Field(value,L"tooltip")){
+        int n=PercentInTooltip(*tooltip);
+        if(n>=0 && HoldsPercentText(value,n)){
+            if(percent>=0 && percent!=n)ambiguous=true;
+            percent=n;
+        }
+    }
+    for(const wchar_t* field:{L"body",L"items",L"columns"}){auto i=value.object.find(field);if(i!=value.object.end())StructuralBattery(i->second,percent,ambiguous);}
+}
+// A battery tooltip in a language of Locales(): then the card's "speak" not ending in that language's
+// "connected" phrase means the phone is not connected, and the fallback must not be used.
+inline bool KnownLanguageTooltip(const Value& value){
+    if(value.kind==L'['){for(const auto& c:value.array)if(KnownLanguageTooltip(c))return true;return false;}
+    if(value.kind!=L'{')return false;
+    if(const auto* tooltip=Field(value,L"tooltip")){
+        size_t count=0;const Locale* k=Locales(count);
+        for(size_t i=0;i<count;++i)if(tooltip->rfind(k[i].prefix,0)==0)return true;
+    }
+    for(const wchar_t* field:{L"body",L"items",L"columns"}){auto i=value.object.find(field);if(i!=value.object.end()&&KnownLanguageTooltip(i->second))return true;}
+    return false;
+}
 } // namespace Detail
 inline bool Parse(const std::wstring& json,Reading& out){
     Detail::Value root;
@@ -176,9 +227,17 @@ inline bool Parse(const std::wstring& json,Reading& out){
     const auto* speak=Detail::Field(root,L"speak");Reading parsed;
     if(!speak)return false;
     int locale=ConnectedLocale(*speak,parsed.name);
-    if(locale<0)return false;
-    size_t count=0;
     bool ambiguous=false;
+    if(locale<0){
+        // Unknown card language: "<name> - <status>", battery from the layout alone (see StructuralBattery).
+        size_t dash=speak->rfind(L" - ");
+        if(dash==std::wstring::npos||dash==0||Detail::KnownLanguageTooltip(root))return false;
+        parsed.name=speak->substr(0,dash);
+        Detail::StructuralBattery(root,parsed.percent,ambiguous);
+        if(ambiguous||parsed.percent<0)return false;
+        out=std::move(parsed);return true;
+    }
+    size_t count=0;
     Detail::Battery(root,Locales(count)[locale],parsed.percent,parsed.charging,ambiguous);
     if(ambiguous||parsed.percent<0)return false;
     out=std::move(parsed);return true;

@@ -174,6 +174,26 @@ int main() {
     assert(PhoneLink::Parse(LR"({"speak":"Pixel - Connected to your PC","tooltip":"Battery 30% remaining, battery saver, charging"})", reading));
     assert(reading.percent == 30 && reading.charging);
 
+    // Card languages without a Locales() entry: the battery block's layout alone (tooltip "<n>%"
+    // holding a TextBlock that reads "<n>%"); charging is unknown.
+    const std::wstring german = LR"({
+        "speak": "Galaxy S26 - Mit Ihrem PC verbunden",
+        "body": [{"type": "ColumnSet", "columns": [
+            {"type": "Column", "items": [{"type": "Container", "tooltip": "Akku 41 % verbleibend",
+                "items": [{"type": "TextBlock", "text": "41 %"}]}]}
+        ]}]
+    })";
+    reading = {};
+    assert(PhoneLink::Parse(german, reading));
+    assert(reading.name == L"Galaxy S26" && reading.percent == 41 && !reading.charging);
+    // Without the visible "<n>%" next to it, a percentage in a tooltip is not trusted.
+    assert(!PhoneLink::Parse(LR"({"speak":"Galaxy - Verbunden","body":[{"type":"Container","tooltip":"Download 90 %","items":[{"type":"TextBlock","text":"Datei"}]}]})", reading));
+    // Two different levels: ambiguous.
+    assert(!PhoneLink::Parse(LR"({"speak":"P - X","body":[{"type":"Container","tooltip":"a 41%","items":[{"type":"TextBlock","text":"41%"}]},{"type":"Container","tooltip":"b 50%","items":[{"type":"TextBlock","text":"50%"}]}]})", reading));
+    // A known-language card whose "speak" is not "connected" (e.g. disconnected) never uses the fallback.
+    assert(!PhoneLink::Parse(LR"({"speak":"Pixel - Disconnected","body":[{"type":"Container","tooltip":"Battery 41% remaining","items":[{"type":"TextBlock","text":"41%"}]}]})", reading));
+    assert(!PhoneLink::Parse(LR"({"speak":"Pixel - Déconnecté","body":[{"type":"Container","tooltip":"Batterie 41 % restante","items":[{"type":"TextBlock","text":"41 %"}]}]})", reading));
+
     std::puts("Phone Link structural and localization tests passed");
     return 0;
 }
