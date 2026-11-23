@@ -189,5 +189,6 @@ void PollUnsupported(PollContext& ctx);  // last: wireless mice / keyboards no d
 void PollArmorX(PollContext& ctx);  // BigBigWon Armor X Pro: level over Bluetooth LE while on its 045E:0B12 dongle
 void PollGenericHid(PollContext &ctx);
 void PollBluetooth(PollContext &ctx);
+void PollSteamVR(PollContext &ctx);   // VR headset and controllers through a running SteamVR (OpenVR)
 void PollXInput(PollContext &ctx);
 void PollMaono(PollContext &ctx);
