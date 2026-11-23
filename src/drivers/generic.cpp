@@ -336,6 +336,7 @@ void PollBluetooth(PollContext& ctx) {
     bool watching = false, waited = false;
     for (auto& [cid, f] : battery) {
         if (reported.count(cid)) continue;
+        if (ctx.btContainers.count(cid)) continue;  // a driver above already shows this device (e.g. a phone's LE twin)
         auto mc = containerConn.find(cid);
         if (mc != containerConn.end() ? !mc->second : !f.connected) continue;
         DeviceStatus s;
