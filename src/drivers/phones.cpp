@@ -71,6 +71,7 @@ struct Phone {
     int winPct = -1;           // Windows' own level
     bool winLive = false;      // that level comes from a connected node
     std::vector<std::wstring> twins;  // containers of the same phone merged into this one (MergeLeTwins)
+    std::vector<std::wstring> names;  // every main node's name: classic and LE can differ in one container
 };
 
 // Name for comparing: lower case, typographic apostrophe as a plain one ("Alex’s iPhone").
@@ -116,6 +117,7 @@ void MergeLeTwins(std::vector<Phone>& phones) {
         }
         c.twins.push_back(le.cid);
         for (auto& t : le.twins) c.twins.push_back(t);
+        c.names.insert(c.names.end(), le.names.begin(), le.names.end());
         phones.erase(phones.begin() + i);  // `match` may shift, but it is not used after this
     }
 }
@@ -148,6 +150,7 @@ std::vector<Phone> FindPhones() {
         if (classicMain || leMain) {
             std::wstring name = btprops::String(di, &dd, DEVPKEY_Device_FriendlyName);
             if (!name.empty() && (p.name.empty() || classicMain)) p.name = name;
+            if (!name.empty()) p.names.push_back(name);
             if (UINT64 a = btprops::Address(inst)) (classicMain ? p.classicAddr : p.leAddr) = a;
             UINT32 cod = 0;
             if (SetupDiGetDevicePropertyW(di, &dd, &kClassOfDevice, &t, (PBYTE)&cod, sizeof(cod), nullptr, 0) &&
@@ -293,6 +296,16 @@ void PollPhones(PollContext& ctx) {
         else if (fresh) s.percent = it->second.percent;
         else if (p.winPct >= 0 && p.connected) s.percent = p.winPct;
         if (IsDuplicateBluetoothDevice(s, ctx.out)) continue;  // e.g. already shown by Phone Link under its name
+        // Classic node "iPhone" and LE node "Alex's iPhone" in one container, Phone Link showing the latter.
+        bool linked = false;
+        for (const auto& o : ctx.out)
+            if (o.key == L"phonelink")
+                for (const auto& n : p.names) linked |= NameKey(n) == NameKey(o.name);
+        if (linked) {
+            ctx.btContainers.insert(p.cid);
+            for (const auto& t : p.twins) ctx.btContainers.insert(t);
+            continue;
+        }
         if (!p.classicAddr) {
             // LE-only "iPhone" while Phone Link already shows "Alex's iPhone": the same phone.
             bool shown = false;
