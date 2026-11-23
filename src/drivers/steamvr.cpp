@@ -1,15 +1,8 @@
-// VR headsets and their controllers, read through SteamVR (OpenVR).
-//
-// Whatever brings the headset into SteamVR (Valve Index, Vive, Quest over ALVR / Virtual Desktop /
-// Steam Link / Quest Link, Pico ...) publishes the battery of the headset and of each controller as
-// tracked-device properties. This driver asks SteamVR for them while it runs and never starts it:
-//  - nothing is loaded unless vrserver.exe is running;
-//  - vrclient_x64.dll comes from the SteamVR install named in %LOCALAPPDATA%\openvr\openvrpaths.vrpath
-//    (what openvr_api.dll does), so no OpenVR DLL ships with the app;
-//  - the connection is a "background" application (SteamVR is never launched for it) and is closed
-//    after every poll, so quitting SteamVR never waits on this app.
-// Interface layouts follow ValveSoftware/openvr: src/ivrclientcore.h (IVRClientCore_003) and
-// headers/openvr_capi.h (VR_IVRSystem_FnTable, IVRSystem_026).
+// VR headset, controller and tracker batteries from a running SteamVR (tracked-device properties).
+// Only while vrserver.exe runs. vrclient_x64.dll is loaded from the install named in
+// %LOCALAPPDATA%\openvr\openvrpaths.vrpath, as openvr_api.dll does. Background application type, so
+// SteamVR is never started; closed after each poll so quitting SteamVR does not wait on us.
+// Layouts: ValveSoftware/openvr src/ivrclientcore.h (IVRClientCore_003), headers/openvr_capi.h (IVRSystem_026).
 #include "drivers.h"
 
 #include <tlhelp32.h>

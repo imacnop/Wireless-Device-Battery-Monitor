@@ -81,11 +81,9 @@ std::wstring NameKey(const std::wstring& s) {
     return n;
 }
 
-// One phone can show up as two Bluetooth containers: the classic pairing ("Alex's iPhone",
-// BTHENUM) and a separate LE pairing with only the model name ("iPhone", BTHLE). Each one was listed,
-// so the phone appeared twice. An LE-only container whose name is contained in the name of exactly one
-// classic container of the same brand is folded into it. The classic one keeps its key (settings and
-// battery history) and takes the LE address (Battery Service reads) and any level only the LE side had.
+// An iPhone can have a classic container ("Alex's iPhone") and a separate LE one ("iPhone").
+// Fold an LE-only container into the single classic one of the same brand whose name contains it;
+// the classic key stays (settings, history) and gains the LE address and level.
 void MergeLeTwins(std::vector<Phone>& phones) {
     for (size_t i = 0; i < phones.size();) {
         Phone& le = phones[i];

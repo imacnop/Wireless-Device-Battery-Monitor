@@ -26,7 +26,7 @@
 // Pulsar PRO Dongle (3710:5405) uses a B4 status request/reply on its 65-byte Generic Desktop
 // collection. USBPcap captures provided in issue #911 show a zeroed B4 output report followed by a B4
 // input report with 84 40 at bytes 4..5, byte 1 matching the web utility's 100% reading and byte 6
-// changing from 0 to 1 on USB power: https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/issues/911.
+// changing from 0 to 1 on USB power: issue #911 of the original project.
 // Follow-up diagnostics also captured 85 40 on the dongle while charging toggled.
 // The output report only requests status; it does not change device settings.
 // The same B4 exchange is visible on the wired ZYWOO mouse (3710:7401); its B4 reply uses markers

@@ -137,7 +137,7 @@ DeviceKind KindFromCategory(const std::wstring& c) {
 // Bluetooth LE keyboards that also expose a mouse collection (for the knob or macros), so
 // KindFromCollections would call them a mouse. Matched on the exact HID vid/pid seen on the LE link.
 //  * 3151:4013 Attack Shark K86 (Rongyuan firmware) over Bluetooth, from the reporter's --dump in
-//    krisgfx9/Wireless-Device-Battery-Monitor#168. Its USB ids are 3151:4011 / 4015 (OpenRGB issue 4074).
+//    issue #168 of the original project. Its USB ids are 3151:4011 / 4015 (OpenRGB issue 4074).
 //  * 19F5:324A NuPhy WH80 over Bluetooth, hardware-tested. Its two keyboard collections
 //    coexist with a mouse collection; USB cable mode uses 19F5:A011 instead.
 //  * 0C45:FEFE AJAZZ V83 Pro over Bluetooth (issue #3993). The BT HID link exposes a boot keyboard
