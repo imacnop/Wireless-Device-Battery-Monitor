@@ -1,0 +1,59 @@
+name: Device report
+description: A device is missing, shows a wrong level, or works and you want to confirm it.
+labels: ["device"]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Brand and model, e.g. "Logitech G Pro X Superlight 2", "Meta Quest 3 (ALVR)".
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - 2.4 GHz receiver
+        - USB cable
+        - Bluetooth
+        - SteamVR (VR headset / controllers)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: What happens
+      options:
+        - Not shown at all
+        - Shown, but the level is wrong
+        - Shown twice
+        - Works (confirming support)
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Filled in by the app's "Request support for a device" window (type, notes, USB / HID ids).
+      render: text
+  - type: input
+    id: vendor
+    attributes:
+      label: Level shown by the vendor's own software (if any)
+  - type: textarea
+    id: list
+    attributes:
+      label: Output of `BatteryHub.exe --list`
+      render: text
+  - type: textarea
+    id: dump
+    attributes:
+      label: Output of `BatteryHub.exe --dump`
+      description: Also saved to `%TEMP%\BatteryHub-dump.txt`. Attach the file if it is long.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: BatteryHub version

@@ -28,7 +28,7 @@
 
 namespace {
 
-const char* kAppId = "com.github.krisgfx9.WirelessBattery";
+const char* kAppId = "com.github.imacnop.WirelessBattery";
 const char* kSniPath = "/org/kde/StatusNotifierItem";
 const char* kMenuPath = "/Menu";
 constexpr int kPollSeconds = 30;  // same default as Windows since 1.4.0
@@ -355,7 +355,7 @@ static const char* kSniXml =
     "</interface></node>";
 
 static const char* kAppXml =
-    "<node><interface name='com.github.krisgfx9.WirelessBattery'>"
+    "<node><interface name='com.github.imacnop.WirelessBattery'>"
     "<method name='Quit'/>"
     "</interface></node>";
 
@@ -645,7 +645,7 @@ int QuitRunning() {
     GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
     if (!conn) { fprintf(stderr, "Cannot connect to session bus: %s\n", error->message); g_error_free(error); return 1; }
     GVariant* reply = g_dbus_connection_call_sync(conn, kAppId, kSniPath,
-                                                  "com.github.krisgfx9.WirelessBattery", "Quit",
+                                                  "com.github.imacnop.WirelessBattery", "Quit",
                                                   nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, &error);
     if (!reply) { fprintf(stderr, "Is BatteryHub running? %s\n", error->message); g_error_free(error); }
     else g_variant_unref(reply);

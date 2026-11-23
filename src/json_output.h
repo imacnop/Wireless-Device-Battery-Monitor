@@ -38,6 +38,7 @@ inline const char* DeviceKindName(DeviceKind k) {
         case DeviceKind::Keyboard: return "keyboard";
         case DeviceKind::Gamepad:  return "gamepad";
         case DeviceKind::Phone:    return "phone";
+        case DeviceKind::VrHeadset: return "vr_headset";
         default:                   return "other";
     }
 }

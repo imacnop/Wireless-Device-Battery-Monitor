@@ -1630,7 +1630,6 @@ void ShowMenu() {
     AppendMenuW(m, MF_STRING, ID_REFRESH, T(L"Refresh now"));
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), ID_AUTOSTART, T(L"Start with Windows"));
     AppendMenuW(m, MF_STRING, ID_REPORT, T(L"Request support for a device..."));
-    AppendMenuW(m, MF_STRING, ID_SUPPORT, T(L"Support the project..."));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (updates::Busy() ? MF_GRAYED : 0), ID_UPDATE, updates::MenuLabel().c_str());
     UINT updateFlags = MF_STRING | (updates::AutomaticEnabled() ? MF_CHECKED : 0) |
@@ -1640,7 +1639,6 @@ void ShowMenu() {
     AppendMenuW(m, MF_STRING, ID_EXIT, T(L"Exit"));
     icons.Set(m, ID_REFRESH, false, 0xE72C);         // Refresh
     icons.Set(m, ID_REPORT, false, 0xE897);          // Help
-    icons.Set(m, ID_SUPPORT, false, 0xEB51);         // Heart
     icons.Set(m, ID_UPDATE, false, 0xE777);          // UpdateRestore
     icons.Set(m, ID_EXIT, false, 0xE711);            // Cancel
     POINT pt;
@@ -1729,7 +1727,6 @@ void ShowMenu() {
             SetMode(true);
             break;
         case ID_MODE_TRAY: SetMode(false); break;
-        case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
         case ID_REPORT: report::Show(g_inst, g_hwnd); break;
         case ID_UPDATE: updates::Activate(g_hwnd); break;
         case ID_AUTO_UPDATE: updates::ToggleAutomatic(); break;

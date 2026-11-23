@@ -1,9 +1,17 @@
 # Contributing
 
+Thanks for helping! This is the maintained version of BatteryHub (the original project is no
+longer on GitHub). Issues and pull requests go to
+[imacnop/Wireless-Device-Battery-Monitor](https://github.com/imacnop/Wireless-Device-Battery-Monitor).
+
+**Quick links:** [report a device](https://github.com/imacnop/Wireless-Device-Battery-Monitor/issues/new/choose) ·
+[add a device](#adding-a-device) · [translations](#translations) · [pull requests](#pull-requests) ·
+[security](SECURITY.md) · [releasing](docs/releasing.md)
+
 ## Reporting whether a device works
 
 Most drivers were written from protocol documentation and could not be tested on every model.
-Please open an issue with:
+Please open an issue (the *Device report* form asks for all of this) with:
 
 - the device name, and whether it is connected by receiver, cable or Bluetooth
 - the output of `BatteryHub.exe --list`
@@ -60,6 +68,17 @@ Please open an issue with:
 ## Translations
 
 A language is one UTF-8 text file in `lang/` (copy `lang/_template.txt`, fill in `@code`, `@name` and the phrases). It is built into the app automatically. New UI text in the code goes through `T(L"...")`, or `TF(L"... {name} ...", { { L"name", value } })` when it contains values; never build translated sentences from pieces. After adding phrases, add them to `lang/_template.txt` too.
+
+## Pull requests
+
+1. Branch from `main` (or from the current `release-X.Y.Z` branch when one is open for the next version).
+2. Build with `build.bat` (or `build-local.bat` with WinLibs) and check `BatteryHub.exe --list` / `--json`.
+   Run `make test` when you touch a driver that has a test in `tests/`.
+3. Fill in the pull request template: where the protocol comes from, and whether it was tested on real hardware.
+4. Keep one topic per pull request, and say in the description what you could not test.
+
+Devices that are not HID (for example VR headsets read through SteamVR in `src/drivers/steamvr.cpp`) follow the
+same rules: read only, never start or change another program, and load nothing when it is not running.
 
 ## Code style
 

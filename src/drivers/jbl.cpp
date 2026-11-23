@@ -1,6 +1,6 @@
 // Quantum 350 (0ECB:206B): JBL QuantumENGINE 2.9.4 registers BatteryLevelProp (HIDV1 GET 49)
 // and HIDV1WirelessConnectionStateProp (GET 68) for Q350TV1. Each returns one payload byte.
-// The Windows collection is documented in https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/issues/259
+// The Windows collection is documented in issue #259 of the original project
 //
 // Quantum 610 Wireless (0ECB:205C, ID from JBL's QuantumUSBAudio.inf as listed in
 // https://github.com/sidmax7/QuantumEngine quantum-linux/crates/jbl-quantum/src/models.rs): the same HIDV1
@@ -11,7 +11,7 @@
 //
 // Quantum 360 Wireless (0ECB:2115, same ID source; dongle listed with the HIDV1 dongle models in
 // https://github.com/Tymon3310/jbl-quantum-linux/blob/main/docs/QUANTUM_LINEUP.md). Not HIDV3: its
-// Windows dump in https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/issues/183 has no FF12
+// Windows dump in issue #183 of the original project has no FF12
 // collection, only the 350's layout of a Generic Desktop usage 0 collection (interface 5, 64-byte
 // feature = the 63-byte HIDV1 reports) next to a telephony one. Same read-only GET 68 / GET 49.
 //

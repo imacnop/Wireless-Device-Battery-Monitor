@@ -81,5 +81,5 @@ g++ -std=c++17 -O2 -Wall -Wextra tests/receiver_frames_test.cpp -o build/receive
 ./build/receiver_frames_test
 ```
 
-Related: the same device family appears in [Device request #1288](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/issues/1288),
+Related: the same device family appears in device request #1288 of the original project,
 which lists `260D:1154` rather than the `3554:F527` id measured here.

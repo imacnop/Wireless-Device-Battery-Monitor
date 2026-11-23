@@ -70,7 +70,55 @@ struct Phone {
     UINT64 leAddr = 0;         // BTHLE\DEV_ address (identity address of the LE pairing)
     int winPct = -1;           // Windows' own level
     bool winLive = false;      // that level comes from a connected node
+    std::vector<std::wstring> twins;  // containers of the same phone merged into this one (MergeLeTwins)
 };
+
+// Name for comparing: lower case, typographic apostrophe as a plain one ("Alex’s iPhone").
+std::wstring NameKey(const std::wstring& s) {
+    std::wstring n = Lower(s);
+    for (auto& c : n)
+        if (c == L'’') c = L'\'';
+    return n;
+}
+
+// An iPhone can have a classic container ("Alex's iPhone") and a separate LE one ("iPhone").
+// Fold an LE-only container into the single classic one of the same brand whose name contains it;
+// the classic key stays (settings, history) and gains the LE address and level.
+void MergeLeTwins(std::vector<Phone>& phones) {
+    for (size_t i = 0; i < phones.size();) {
+        Phone& le = phones[i];
+        size_t match = phones.size();
+        int matches = 0;
+        if (!le.classicAddr && le.leAddr) {
+            std::wstring short_ = NameKey(le.name);
+            for (size_t j = 0; j < phones.size(); j++) {
+                const Phone& c = phones[j];
+                if (j == i || !c.classicAddr || c.apple != le.apple) continue;
+                if (short_.size() >= 4 && NameKey(c.name).find(short_) != std::wstring::npos) {
+                    match = j;
+                    matches++;
+                }
+            }
+        }
+        if (matches != 1) {  // none, or ambiguous (two phones of that model): keep both
+            i++;
+            continue;
+        }
+        Phone& c = phones[match];
+        if (!c.leAddr) c.leAddr = le.leAddr;
+        c.connected |= le.connected;
+        c.samsung |= le.samsung;
+        if (c.winPct < 0 || (le.winLive && !c.winLive)) {
+            if (le.winPct >= 0) {
+                c.winPct = le.winPct;
+                c.winLive = le.winLive;
+            }
+        }
+        c.twins.push_back(le.cid);
+        for (auto& t : le.twins) c.twins.push_back(t);
+        phones.erase(phones.begin() + i);  // `match` may shift, but it is not used after this
+    }
+}
 
 std::vector<Phone> FindPhones() {
     std::map<std::wstring, Phone> by;
@@ -130,6 +178,7 @@ std::vector<Phone> FindPhones() {
         if (p.name.empty()) p.name = p.apple ? L"iPhone" : L"Phone";
         out.push_back(p);
     }
+    MergeLeTwins(out);
     return out;
 }
 
@@ -244,6 +293,17 @@ void PollPhones(PollContext& ctx) {
         else if (fresh) s.percent = it->second.percent;
         else if (p.winPct >= 0 && p.connected) s.percent = p.winPct;
         if (IsDuplicateBluetoothDevice(s, ctx.out)) continue;  // e.g. already shown by Phone Link under its name
+        if (!p.classicAddr) {
+            // LE-only "iPhone" while Phone Link already shows "Alex's iPhone": the same phone.
+            bool shown = false;
+            std::wstring n = NameKey(s.name);
+            for (const auto& o : ctx.out)
+                shown |= o.kind == DeviceKind::Phone && n.size() >= 4 && NameKey(o.name).find(n) != std::wstring::npos;
+            if (shown) {
+                ctx.btContainers.insert(p.cid);
+                continue;
+            }
+        }
         if (s.percent < 0) {
             // Paired, no level (Windows only connects a phone during calls or audio, and most Android
             // phones have no Battery Service): menu only, under "No battery info", so the user sees it
@@ -256,5 +316,6 @@ void PollPhones(PollContext& ctx) {
         }
         ctx.out.push_back(s);
         ctx.btContainers.insert(p.cid);
+        for (const auto& t : p.twins) ctx.btContainers.insert(t);  // so the Bluetooth fallback skips them too
     }
 }

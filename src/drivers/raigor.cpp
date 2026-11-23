@@ -1,6 +1,6 @@
 // Fantech Raigor III, Raigor II WG10 and other cheap 2.4 GHz Mouse devices on the reused Sharkoon
 // 1EA7:0066 / 0064 dongle. Owners of both Raigor models reported the same FFB5:0001 collection
-// and ids in krisgfx9/Wireless-Device-Battery-Monitor issues #2891, #411 and #1312.
+// and ids in issues #2891, #411 and #1312 of the original project.
 // Battery lives in the vendor collection FFB5:0001, report id B5, 8-byte in/out reports:
 //   output [B5 05 00 00 00 00 00 00] -> the dongle streams its 256-byte status page as 64 frames
 //          [B5 05 addr 04 d0 d1 d2 d3], addr = 00, 04, ... FC; chunk 94 holds [id3, state, %].

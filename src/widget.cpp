@@ -609,6 +609,7 @@ wchar_t Glyph(DeviceKind k, bool bluetooth) {
         case DeviceKind::Phone:    return 0xE8EA;  // CellPhone
         case DeviceKind::Microphone: return 0xE720;  // Microphone
         case DeviceKind::Speaker:  return 0xE7F5;  // Speakers
+        case DeviceKind::VrHeadset: return 0xEC94;  // HoloLens (mixed reality headset)
         default:                   return bluetooth ? 0xE702 : 0xE772;  // Bluetooth / Devices
     }
 }
