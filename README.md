@@ -2,7 +2,7 @@
 
 > ⚠️ **This is a modified version of BatteryHub, maintained by Robocnop and Imacnop.**
 >
-> The original project (`krisgfx9/Wireless-Device-Battery-Monitor`) has disappeared from GitHub.
+> The original project is no longer on GitHub.
 > **You are welcome to use this version instead.** It has everything the original had, plus the
 > additions below, and keeps updating itself from this repository.
 
@@ -28,6 +28,8 @@ Battery levels of your wireless mouse, headset, keyboard, controller, phone and 
   SteamVR... The app never starts SteamVR itself.
 - 🎮 **Nintendo Switch Pro Controller**: battery level without Steam running.
 - 📱 **iPhone shown once**: an iPhone paired twice with Windows (classic and LE) no longer appears twice.
+- 🐞 **Fewer duplicates**: a Corsair headset on its receiver and on a USB cable at the same time shows once.
+- 📨 **Device requests open a GitHub issue** in your browser, filled in for you; the app sends nothing itself.
 - 🔄 **Updates from this repository**, signed with this project's own release key.
 
 ## Contents
@@ -371,12 +373,11 @@ also accepts `--help`. `--json` prints a stable array that scripts and bar widge
 While the app runs it also keeps `%LOCALAPPDATA%\WirelessBattery\status.json` up to date (the devices the widget shows, in its order), and deletes it on exit, for status bars that read a file instead of starting the exe. See [docs/yasb.md](docs/yasb.md) for a YASB setup.
 Adding new fields is backwards compatible.
 
-**Device not shown?** Right-click the widget or tray icon and choose **Request support for a device...**. Pick the device, check
-what will be sent (it is shown word for word: the device name, its type, its USB/HID ids and interface layout, and your optional
-name and notes) and click **Send**. It goes to the original project's list at [krisgfx.com/tools](https://krisgfx.com/tools/#requested),
-which may no longer answer now that the original project is gone. If sending fails, use
-**Copy full report** and [open an issue here](https://github.com/imacnop/Wireless-Device-Battery-Monitor/issues/new/choose). **Copy full report** puts the complete `--dump` on the clipboard for the issue.
-Report data is sent only when you click Send. Official Windows builds can also contact GitHub
+**Device not shown?** Right-click the widget or tray icon and choose **Request support for a device...**. Pick the device,
+check the preview (the device name, its type, its USB/HID ids and interface layout, and your optional notes) and click
+**Open on GitHub**. Your browser opens a new issue on this repository with those details filled in; nothing is sent
+until you create it there. **Copy full report** puts the complete `--dump` on the clipboard to paste into the issue.
+The app itself sends no device data. Official Windows builds can also contact GitHub
 to check for updates, as described in [Updates on Windows](#updates-on-windows); update checks
 do not send device or battery information.
 
@@ -507,7 +508,7 @@ Refresh now = Aggiorna ora
 
 ## Credits
 
-BatteryHub was created by **krisgfx** ([krisgfx9](https://github.com/krisgfx9)) and its contributors. This modified version is maintained by **Robocnop** and **Imacnop**.
+This version is maintained by **Robocnop** and **Imacnop**.
 
 App icon by [nik-txt](https://github.com/nik-txt) ([`res/app.svg`](res/app.svg)).
 

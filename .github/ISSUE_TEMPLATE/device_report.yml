@@ -32,6 +32,12 @@ body:
         - Works (confirming support)
     validations:
       required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Filled in by the app's "Request support for a device" window (type, notes, USB / HID ids).
+      render: text
   - type: input
     id: vendor
     attributes:

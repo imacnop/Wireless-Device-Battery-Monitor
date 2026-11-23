@@ -20,9 +20,11 @@ powershell -ExecutionPolicy Bypass -File scripts\new-release-key.ps1
 
 ## Every release
 
-1. Push a version tag (`git tag v1.2.3 && git push origin v1.2.3`). CI builds the setup, the
-   portable zip and `SHA256SUMS.txt`, and publishes the release.
-2. Sign the checksum list:
+1. Write the release notes in `docs/release-notes/v1.2.3.md`, in English (see the earlier files
+   for the layout) and commit them. CI refuses to publish a tag without this file.
+2. Push a version tag (`git tag v1.2.3 && git push origin v1.2.3`). CI builds the setup, the
+   portable zip and `SHA256SUMS.txt`, and publishes the release with those notes.
+3. Sign the checksum list:
 
    ```
    powershell -ExecutionPolicy Bypass -File scripts\sign-release.ps1 -Version 1.2.3
@@ -31,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File scripts\new-release-key.ps1
    It downloads `SHA256SUMS.txt` from the release, shows it, asks you to confirm, asks for the key
    password and writes `SHA256SUMS.txt.sig`. If you have the same files in `dist\` (a local build of
    that version), it shows whether they match.
-3. Upload `SHA256SUMS.txt.sig` to the release (the script opens the edit page). From then on the app
+4. Upload `SHA256SUMS.txt.sig` to the release (the script opens the edit page). From then on the app
    offers **Download and install**. Before that it shows the update but only links to the release page.
 
 Only sign a list for a release you published yourself. The signature says "these exact files are the

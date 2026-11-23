@@ -16,5 +16,5 @@ signature the app accepts. See [docs/releasing.md](docs/releasing.md).
 ## What the app does not do
 
 Drivers only send read-only battery queries to devices they recognise. The app does not send device or
-battery data anywhere. It goes online only for the update check (GitHub's public API) and, when you
-click *Send*, for a device support request.
+battery data anywhere. It goes online only for the update check (GitHub's public API). A device support
+request opens a GitHub issue in your browser; you decide whether to create it.

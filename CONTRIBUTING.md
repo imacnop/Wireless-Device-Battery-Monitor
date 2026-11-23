@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping! This is the maintained version of BatteryHub (the original
-`krisgfx9/Wireless-Device-Battery-Monitor` is gone from GitHub). Issues and pull requests go to
+Thanks for helping! This is the maintained version of BatteryHub (the original project is no
+longer on GitHub). Issues and pull requests go to
 [imacnop/Wireless-Device-Battery-Monitor](https://github.com/imacnop/Wireless-Device-Battery-Monitor).
 
 **Quick links:** [report a device](https://github.com/imacnop/Wireless-Device-Battery-Monitor/issues/new/choose) ·
