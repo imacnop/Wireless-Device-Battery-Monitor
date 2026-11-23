@@ -16,6 +16,7 @@
 //    protocol documentation; shared framing also used by the existing Kysona driver.
 #include "drivers.h"
 #include <algorithm>
+#include <cstdlib>
 
 namespace {
 
@@ -107,6 +108,7 @@ private:
 struct PairedModel { USHORT pid; const wchar_t* name; DeviceKind kind; };
 const PairedModel kPairedModels[] = {
     { 0x1B7E, L"Corsair Dark Core RGB Pro SE", DeviceKind::Mouse },  // tested on Slipstream receiver 1BDC
+    { 0x2A09, L"Corsair VOID WIRELESS v2", DeviceKind::Headset },     // tested on its receiver 2A08
 };
 const PairedModel* FindPaired(unsigned pid) {
     for (const auto& m : kPairedModels) if (m.pid == pid) return &m;
@@ -166,6 +168,11 @@ bool PollCorsairCompx(PollContext& ctx, const HidColl& c, USHORT vid, USHORT pid
 
 }  // namespace
 void PollCorsair(PollContext& ctx) {
+    // A headset paired to its receiver and plugged in by USB to charge answers on both: once as a
+    // receiver child (target 09+, whose property 12 is the headset's product id) and once by itself
+    // (target 08 on its own product id). Remember both kinds to drop the cable copy afterwards.
+    struct Seen { std::wstring key; USHORT pid; unsigned devPid; bool direct; int percent; };
+    std::vector<Seen> seen;
     for (auto [vid, pid] : ctx.Products(0x1B1C)) {
         if (Contains(kVoidPids, std::size(kVoidPids), pid)) {
             for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) { return (c.page() == 0xFFC5 || c.page() == 0xFF00) && c.outLen() > 0; })) {
@@ -224,10 +231,22 @@ void PollCorsair(PollContext& ctx) {
                 s.percent = Clamp100((int)(level + 5) / 10);
                 unsigned charge = 0;
                 if (b.Get(target, 0x10, charge)) s.charging = charge == 1 || charge == 3;
+                seen.push_back({ s.key, pid, devPid, target == 0x08, s.percent });
                 ctx.out.push_back(s);
                 any = true;
             }
             if (any) { ctx.Claim(vid, pid); break; }
         }
+    }
+    // Keep the receiver's entry (it stays when the cable is unplugged, so settings and history follow
+    // one key) and drop the direct one for the same product with the same level.
+    for (const Seen& d : seen) {
+        if (!d.direct) continue;
+        bool viaReceiver = false;
+        for (const Seen& r : seen)
+            viaReceiver |= !r.direct && r.pid != d.pid && r.devPid == d.pid && std::abs(r.percent - d.percent) <= 2;
+        if (!viaReceiver) continue;
+        ctx.out.erase(std::remove_if(ctx.out.begin(), ctx.out.end(), [&](const DeviceStatus& s) { return s.key == d.key; }),
+                      ctx.out.end());
     }
 }
