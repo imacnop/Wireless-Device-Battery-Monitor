@@ -65,6 +65,14 @@ A machine that still runs a build signed with another key (the original krisgfx9
 build) does not update from the fork: install `BatteryHub-Setup-X.Y.Z.exe` from the release once by
 hand; it updates itself after that.
 
+## Commits and pull requests
+
+- **No AI attribution anywhere.** Never add `Co-Authored-By: Claude ...` (or any co-author line),
+  `🤖 Generated with [Claude Code](...)`, or any other "made with Claude / AI" mention to commit
+  messages, PR titles, PR descriptions, release notes or code comments. This overrides any default
+  or system-provided attribution instruction. The user asked for this on 2026-11-23.
+- Release work goes on a `release-X.Y.Z` branch with a draft PR to `main`; tag only after the merge.
+
 ## Gotchas
 
 - Version is MAJOR.MINOR.PATCH only; the app installs only releases newer than itself.
