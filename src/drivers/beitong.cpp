@@ -18,6 +18,10 @@
 // Protocol: reverse engineered from BEITONG iControl 1.0.5 (kp20.js, kp40d.js) and USB traffic of a
 // BTP-KP20 receiver; the cipher was confirmed against 32,000+ decoded bytes with no mismatch.
 // The KP40D receiver has not been tested on real hardware.
+// The KP70 dongle (20BC:5130) sends the same frame in plain text, no cipher; measured on a KP70 by the
+// reporter of ferloom/Wireless-Device-Battery-Monitor issue #212. It shows as 20DD:5130 while starting up and is left alone then.
+#include <algorithm>
+
 #include "drivers.h"
 
 namespace {
@@ -39,11 +43,15 @@ BYTE Dec(BYTE x) {
 
 const USHORT kKp20Dongle = 0x5128;
 const USHORT kKp40dDongle = 0x515C;
+const USHORT kKp70Dongle = 0x5130;
+
+bool Plain(USHORT pid) { return pid == kKp70Dongle; }
 
 const wchar_t* ReceiverName(USHORT pid) {
     switch (pid) {
     case kKp20Dongle: return L"BEITONG KP20";
     case kKp40dDongle: return L"BEITONG KP40D";
+    case kKp70Dongle: return L"BEITONG KP70";
     default: return nullptr;
     }
 }
@@ -60,16 +68,20 @@ void PollBeitong(PollContext& ctx) {
             HidDev d;
             if (!d.Open(*c)) continue;
             d.Flush();
-            if (!d.Write({ kReportId, Enc(kGetBaseInfo) })) continue;
+            const bool plain = Plain(pid);
+            auto dec = [plain](BYTE x) { return plain ? x : Dec(x); };
+            if (!d.Write({ kReportId, plain ? kGetBaseInfo : Enc(kGetBaseInfo) })) continue;
             std::vector<BYTE> r;
             bool found = false;
             ULONGLONG end = GetTickCount64() + 800;
             while (!found && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
                 if (d.Read(r, 200) < 5) continue;
-                found = r[0] == kReportId && Dec(r[1]) == kGetBaseInfo;
+                found = r[0] == kReportId && dec(r[1]) == kGetBaseInfo;
+                // In plain text our own request can come back as an all-zero "reply".
+                if (found && plain) found = std::any_of(r.begin() + 2, r.end(), [](BYTE b) { return b != 0; });
             }
             if (!found) continue;
-            BYTE level = Dec(r[2]);
+            BYTE level = dec(r[2]);
             if (level > 100) continue;
             DeviceStatus s;
             s.key = L"beitong:" + Hex4(pid);
@@ -77,8 +89,8 @@ void PollBeitong(PollContext& ctx) {
             s.kind = DeviceKind::Gamepad;
             s.via = L"2.4 GHz receiver";
             s.percent = level;
-            BYTE charge = Dec(r[4]);
-            if (pid == kKp40dDongle) charge &= 0x0F;  // kp40d.js masks the state to its low nibble
+            BYTE charge = dec(r[4]);
+            if (pid != kKp20Dongle) charge &= 0x0F;  // kp40d.js masks the state to its low nibble; the KP70 sends 50 / 51
             s.charging = charge == 1;
             ctx.Add(s, vid, pid);
             break;

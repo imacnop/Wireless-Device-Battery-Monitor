@@ -98,5 +98,35 @@ int main() {
         assert(!ShouldNotifyChargeLimit(c, 85, 84, limitWarned));                 // stale reading
     }
 
+    {   // fully charged: once when seen reaching 100%, re-armed off power
+        DeviceStatus c;
+        c.key = mouse;
+        c.charging = true;
+        bool fullWarned = false;
+        c.percent = 99;
+        assert(!ShouldNotifyFull(c, 98, fullWarned));
+        c.percent = 100;
+        assert(ShouldNotifyFull(c, 99, fullWarned));
+        assert(!ShouldNotifyFull(c, 100, fullWarned));                           // once
+        c.charging = false;
+        c.percent = 100;
+        assert(!ShouldNotifyFull(c, 100, fullWarned) && !fullWarned);           // unplugged: re-armed
+        c.charging = true;
+        assert(!ShouldNotifyFull(c, -1, fullWarned));                           // full when first seen: silent
+        assert(!ShouldNotifyFull(c, 100, fullWarned));
+        DeviceStatus d;
+        d.charging = false;
+        d.full = true;
+        d.percent = -1;
+        bool w = false;
+        assert(ShouldNotifyFull(d, 95, w));                                      // device says "full"
+        d.asleep = true;
+        w = false;
+        assert(!ShouldNotifyFull(d, 95, w));
+    }
+    assert(InQuietHours(23, 22, 8) && InQuietHours(0, 22, 8) && InQuietHours(7, 22, 8));
+    assert(!InQuietHours(8, 22, 8) && !InQuietHours(21, 22, 8) && !InQuietHours(12, 22, 8));
+    assert(InQuietHours(13, 12, 14) && !InQuietHours(14, 12, 14) && !InQuietHours(5, 5, 5));
+
     std::puts("Smart Battery Alerts policy tests passed");
 }

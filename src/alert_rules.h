@@ -61,4 +61,24 @@ inline bool ShouldNotifyChargeLimit(const DeviceStatus& s, int limit, int previo
     }
     return false;
 }
+
+// "Fully charged": once when a charging device reaches 100% (or says it is full), only when seen getting
+// there, so a device already full when the app starts says nothing. Re-armed once it is off power.
+inline bool ShouldNotifyFull(const DeviceStatus& s, int previousPercent, bool& warned) {
+    if (!s.connected || s.asleep) return false;
+    const bool full = s.full || (s.charging && s.percent >= 100);
+    if (!s.charging && !s.full) { warned = false; return false; }
+    if (full && !warned && previousPercent >= 0 && previousPercent < 100) {
+        warned = true;
+        return true;
+    }
+    if (full) warned = true;
+    return false;
+}
+
+// Quiet hours: no notifications from `startHour` until `endHour` (local time, may wrap past midnight).
+inline bool InQuietHours(int hour, int startHour, int endHour) {
+    if (startHour == endHour) return false;
+    return startHour < endHour ? hour >= startHour && hour < endHour : hour >= startHour || hour < endHour;
+}
 }  // namespace alerts

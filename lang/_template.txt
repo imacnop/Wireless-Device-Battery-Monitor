@@ -259,3 +259,19 @@ Tray icons show the device type =
 No battery info ({count}) = 
 Animate charging devices = 
 Show on MyDockFinder (experimental) = 
+
+# 1.6.0
+Fully charged = 
+{name} is fully charged = 
+Notify when fully charged = 
+No notifications from 10 pm to 8 am = 
+Every 15 s while charging = 
+Steady percentages (no 60, 62, 61 jumps) = 
+Forget devices not seen for 30 days = 
+Install updates without asking = 
+Icon color = 
+Brand color = 
+Taskbar color = 
+Open {app} = 
+Double-click a device to open its maker's app = 
+Show the new DPI when it changes (experimental) = 

@@ -1,4 +1,4 @@
-// Flydigi Vader 5 Pro (37D7:2401) and Apex 5 (37D7:2501), vendor collection FFA0:0001.
+// Flydigi Vader 5 Pro (37D7:2401), Apex 5 (37D7:2501) and Apex 6 / 6 Pro (37D7:2502), vendor collection FFA0:0001.
 // Protocol reference: SDL/src/joystick/hidapi/SDL_hidapi_flydigi.c and
 // https://github.com/HeyOkay/HaloBattery/issues/191 (Windows hardware traces).
 // Apex 5 model ID 135 is not in SDL's table; it was seen on a real Apex 5 on the 2.4 GHz receiver.
@@ -13,12 +13,15 @@ struct Model {
     BYTE reportId;                      // output report ID for commands (0 = unnumbered)
     BYTE ids[6];                        // model IDs accepted from the info reply (data[5]); 0 = unused
     const wchar_t* name;
+    int step;                           // percent per level step: Vader / Apex 5 0..5, Apex 6 0..10
 };
 
 // Vader 5 Pro uses unnumbered output reports; Apex 5 uses report 03 (SDL FLYDIGI_V2_CMD_REPORT_ID).
 const Model kModels[] = {
-    { 0x2401, 0x00, { 130 }, L"Flydigi Vader 5 Pro" },
-    { 0x2501, 0x03, { 128, 129, 133, 134, 135 }, L"Flydigi Apex 5" },
+    { 0x2401, 0x00, { 130 }, L"Flydigi Vader 5 Pro", 20 },
+    { 0x2501, 0x03, { 128, 129, 133, 134, 135 }, L"Flydigi Apex 5", 20 },
+    // Apex 6 = 149, Apex 6 Pro = 150 / 152 (SDL's USB_PRODUCT_FLYDIGI_V2_APEX6); unnumbered reports.
+    { 0x2502, 0x00, { 149, 150, 152 }, L"Flydigi Apex 6", 10 },
 };
 
 bool Reply(HidDev& d, BYTE command, std::vector<BYTE>& reply) {
@@ -56,15 +59,15 @@ void PollModel(PollContext& ctx, const Model& m) {
         if (r.size() < 12 || !KnownId(m, r[5])) continue;  // confirmed model identity
         const int level = r[11] & 0x0F;
         const int state = r[11] >> 4;
-        if (state > 2 || level > 5) continue;
+        if (state > 2 || level * m.step > 100) continue;
         const int connection = r[6];
         if (modern ? (connection > 1) : (connection != 1 && connection != 2)) continue;
         DeviceStatus s;
         s.key = ctx.StableKey(L"flydigi:" + Hex4(m.pid));
-        s.name = m.name;
+        s.name = m.pid == 0x2502 && r[5] != 149 ? L"Flydigi Apex 6 Pro" : m.name;
         s.kind = DeviceKind::Gamepad;
         s.via = connection == (modern ? 1 : 2) ? L"2.4 GHz receiver" : L"USB cable";
-        s.percent = state == 2 ? 100 : level * 20;
+        s.percent = state == 2 ? 100 : level * m.step;
         s.charging = state == 1;
         ctx.Add(s, kVid, m.pid);
     }

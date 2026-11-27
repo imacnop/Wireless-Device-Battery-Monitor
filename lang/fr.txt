@@ -248,3 +248,19 @@ Tray icons show the device type = Les icônes de notification montrent le type d
 No battery info ({count}) = Sans info de batterie ({count})
 Animate charging devices = Animer les appareils en charge
 Show on MyDockFinder (experimental) = Afficher dans MyDockFinder (expérimental)
+
+# 1.6.0
+Fully charged = Charge terminée
+{name} is fully charged = {name} est complètement chargé
+Notify when fully charged = Prévenir quand la charge est terminée
+No notifications from 10 pm to 8 am = Pas de notifications de 22 h à 8 h
+Every 15 s while charging = Toutes les 15 s pendant la charge
+Steady percentages (no 60, 62, 61 jumps) = Pourcentages stables (pas de 60, 62, 61)
+Forget devices not seen for 30 days = Oublier les appareils absents depuis 30 jours
+Install updates without asking = Installer les mises à jour sans demander
+Icon color = Couleur de l'icône
+Brand color = Couleur de la marque
+Taskbar color = Couleur de la barre des tâches
+Open {app} = Ouvrir {app}
+Double-click a device to open its maker's app = Double-clic sur un appareil pour ouvrir le logiciel de la marque
+Show the new DPI when it changes (experimental) = Afficher le nouveau DPI quand il change (expérimental)

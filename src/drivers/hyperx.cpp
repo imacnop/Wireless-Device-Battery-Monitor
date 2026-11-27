@@ -44,7 +44,7 @@ bool Cloud3(const HidColl& c, DeviceStatus& s) {
     };
     std::vector<BYTE> r;
     if (!q(0x82, r)) return false;
-    s = Base(c.pid, (c.pid == 0x069F || c.pid == 0x0995) ? L"HyperX Cloud II Core Wireless" : L"HyperX Cloud III Wireless");
+    s = Base(c.pid, (c.pid == 0x069F || c.pid == 0x0995 || c.pid == 0x0795) ? L"HyperX Cloud II Core Wireless" : L"HyperX Cloud III Wireless");
     s.connected = r[2] != 0;
     if (s.connected) {
         if (q(0x8A, r)) s.charging = r[2] == 1;
@@ -256,7 +256,7 @@ bool Cloud3S(const HidColl& c, DeviceStatus& s) {
     };
     std::vector<BYTE> r;
     if (!q(0x02, r)) return false;
-    s = Base(c.pid, L"HyperX Cloud III S Wireless");
+    s = Base(c.pid, c.pid == 0x03C6 ? L"HyperX Cloud Stinger 3 Wireless" : L"HyperX Cloud III S Wireless");
     s.connected = r[6] == 2;
     if (!s.connected) return true;
     if (q(0x06, r) && r[6] <= 100) s.percent = r[6];
@@ -327,10 +327,13 @@ struct Model {
 const Model kModels[] = {
     { 0x03F0, { 0x0FCC, 0x05B7, 0x0C9D }, [](const HidColl& c) { return c.outLen() == 62 && c.inLen() == 62; }, Cloud3 },
     // Cloud II Core Wireless: same 66 <cmd> protocol as Cloud III Wireless, 64-byte reports (HyperHeadset).
-    { 0x03F0, { 0x069F, 0x0995 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 62 && c.inLen() >= 62; }, Cloud3 },
+    { 0x03F0, { 0x069F, 0x0995, 0x0795 },  // 0795: a second Cloud II Core dongle id
+      [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 62 && c.inLen() >= 62; }, Cloud3 },
     // Cloud III S: report 0C lives on the 64/64-byte collection, which Windows lists under usage page 01C0
     // (not a vendor page). The FF13 (62-byte) and FFC0 (32-byte) collections don't carry it.
-    { 0x03F0, { 0x06BE, 0x02CC }, [](const HidColl& c) { return c.outLen() == 64 && c.inLen() == 64; }, Cloud3S },
+    // Cloud Stinger 3 Wireless (03C6) answers the same report 0C read (confirmed on the headset by a user
+    // of ferloom/Wireless-Device-Battery-Monitor, issue #313).
+    { 0x03F0, { 0x06BE, 0x02CC, 0x03C6 }, [](const HidColl& c) { return c.outLen() == 64 && c.inLen() == 64; }, Cloud3S },
     { 0x03F0, { 0x0696, 0x018B, 0x0D93, 0x0C8C }, [](const HidColl& c) { return c.page() == 0xFF90 && c.usage() == 0x0303; }, Cloud2 },  // 0C8C: Cloud Flight for PS, device request #2561, untested
     { 0x0951, { 0x1718 }, [](const HidColl& c) { return c.outLen() == 62; }, Cloud2Kingston },
     // Cloud Flight S (0951:16EA / 16EB) shares the Cloud II Wireless read-only protocol.

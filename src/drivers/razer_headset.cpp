@@ -212,14 +212,23 @@ void PollBarracudaXChroma(PollContext& ctx) {
     }
 }
 
-void PollBlackSharkV2Pro2020(PollContext& ctx) {
-    constexpr USHORT vid = 0x1532, pid = 0x0528;
+// The Nari (051C, interface 5) answers the same request with the same layout; its state byte is 06
+// once charged (Synapse capture in Modzeleczek/RazerNariBatteryLevel, fields as read by HaloBattery).
+struct FeatureFfModel { USHORT pid; int iface; const wchar_t* key; const wchar_t* name; };
+const FeatureFfModel kFeatureFfModels[] = {
+    { 0x0528, 3, L"blackshark:0528", L"Razer BlackShark V2 Pro (2020)" },
+    { 0x051C, 5, L"razer:nari:051c", L"Razer Nari" },
+};
+
+void PollFeatureFf(PollContext& ctx, const FeatureFfModel& m) {
+    constexpr USHORT vid = 0x1532;
+    const USHORT pid = m.pid;
     constexpr int reportLen = 64, maxReads = 5;
     constexpr BYTE reply[] = { 0xFF, 0x0F, 0x05, 0xFE, 0x12, 0x04, 0x1F, 0x08, 0x05 };
     constexpr BYTE stale[] = { 0xFF, 0x01, 0x00, 0xFE, 0x12, 0x04, 0x1F, 0x08, 0x05 };
     if (ctx.IsClaimed(vid, pid)) return;
-    auto colls = ctx.Find(vid, pid, [](const HidColl& c) {
-        return c.iface == 3 && c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() == reportLen;
+    auto colls = ctx.Find(vid, pid, [&m](const HidColl& c) {
+        return c.iface == m.iface && c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() == reportLen;
     });
     for (const HidColl* c : colls) {
         HidDev d;
@@ -236,14 +245,15 @@ void PollBlackSharkV2Pro2020(PollContext& ctx) {
             if (!fresh && !offline) continue;
 
             DeviceStatus s;
-            s.key = L"blackshark:" + Hex4(pid);
-            s.name = L"Razer BlackShark V2 Pro (2020)";
+            s.key = m.key;
+            s.name = m.name;
             s.kind = DeviceKind::Headset;
             s.via = L"2.4 GHz receiver";
             s.millivolts = fresh ? (r[12] << 8) | r[13] : 0;
             s.connected = s.millivolts != 0;
             if (s.connected) {
                 s.charging = r[11] == 0x09;
+                s.full = r[11] == 0x06;
                 // The receiver can jump to 80% as soon as charging starts, even from 10%.
                 if (!s.charging && r[14] <= 100) s.percent = r[14];
             }
@@ -251,6 +261,10 @@ void PollBlackSharkV2Pro2020(PollContext& ctx) {
             return;
         }
     }
+}
+
+void PollBlackSharkV2Pro2020(PollContext& ctx) {
+    for (const FeatureFfModel& m : kFeatureFfModels) PollFeatureFf(ctx, m);
 }
 
 // ---- BlackShark V2 Pro (2023): "PA" envelope ----------------------------------------------------

@@ -15,6 +15,13 @@
 //   Reply:   input report 12: [35] = cable/charging flag, [36] = battery percent (0..100)
 // Protocol reference: github.com/vdemonchy/cyclone2-linux (docs/protocol.md); confirmed on a real
 // Cyclone 2 (the level was read while on battery).
+//
+// G7 Pro 8K PC (Aimlabs), XInput mode: receiver 3537:10C6, cable 10C5. Same report 12 on FFF0:0040, asked
+// with 0F F2; its Xbox battery says 100% while this stream has the real level. An unpaired receiver
+// streams report 12 with nothing but zeros. From ferloom/Wireless-Device-Battery-Monitor (gamesir.rs,
+// captured on a 10C6 receiver).
+#include <algorithm>
+
 #include "drivers.h"
 
 namespace {
@@ -26,6 +33,7 @@ const USHORT kVid = 0x3537;
 bool IsNova(USHORT pid) { return pid == 0x1098 || pid == 0x100F || pid == 0x1040; }  // 1040: Nova Lite 2 receiver (issue #47, same FF7A collection; untested)
 // 100B: Cyclone 2 with the controller linked or on a cable (the receiver is 0575 while no pad is on).
 bool IsCyclone2(USHORT pid) { return pid == 0x100B; }
+bool IsG7Pro8k(USHORT pid) { return pid == 0x10C5 || pid == 0x10C6; }
 
 }  // namespace
 
@@ -61,27 +69,29 @@ void PollGameSir(PollContext& ctx) {
 
 void PollGameSirCyclone(PollContext& ctx) {
     for (auto [vid, pid] : ctx.Products(kVid)) {
-        if (!IsCyclone2(pid)) continue;
+        const bool g7 = IsG7Pro8k(pid);
+        if (!IsCyclone2(pid) && !g7) continue;
         for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) { return c.page() == 0xFFF0 && c.usage() == 0x0040 && c.outLen() >= 3 && c.inLen() >= 37; })) {
             HidDev d;
             if (!d.Open(*c)) continue;
             d.Flush();
-            if (!d.Write({ 0x0F, 0x03 })) continue;
+            if (!d.Write({ 0x0F, (BYTE)(g7 ? 0xF2 : 0x03) })) continue;
             std::vector<BYTE> r;
             bool found = false;
             ULONGLONG end = GetTickCount64() + 1500;
             while (!found && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
                 if (d.Read(r, 200) < 37) continue;
                 found = r[0] == 0x12 && r[36] <= 100;  // the 0x10 event reports carry no battery
+                if (found && g7) found = std::any_of(r.begin() + 1, r.end(), [](BYTE b) { return b != 0; });
             }
             if (!found) continue;
             DeviceStatus s;
             s.key = L"gamesir:" + Hex4(pid);
-            s.name = L"GameSir Cyclone 2";
+            s.name = g7 ? L"GameSir G7 Pro 8K" : L"GameSir Cyclone 2";
             s.kind = DeviceKind::Gamepad;
-            s.via = L"2.4 GHz receiver or USB";
+            s.via = !g7 ? L"2.4 GHz receiver or USB" : pid == 0x10C5 ? L"USB cable" : L"2.4 GHz receiver";
             s.percent = r[36];
-            s.charging = r[35] == 1;
+            s.charging = g7 ? (r[35] & 1) != 0 : r[35] == 1;
             ctx.Add(s, vid, pid);
             break;
         }

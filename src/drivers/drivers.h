@@ -122,6 +122,11 @@ void PollAjazzAk992(PollContext& ctx); // AJAZZ AK992 on the Telink 2.4 GHz rece
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollJabra(PollContext& ctx);     // Jabra GNP headsets, on USB or behind a Link dongle
 void PollJblSpeaker(PollContext& ctx); // JBL Flip 7 over Bluetooth LE (PR #274; refreshed on its own thread)
+void PollFnatic(PollContext& ctx);    // FNATIC BOLT (2F0E:0203 receiver, 0204 cable)
+void PollRoccat(PollContext& ctx);    // ROCCAT Syn Max Air headset (1E7D:3A3F)
+void PollWraithW1SE(PollContext& ctx);  // Wraith W1 SE mouse (0738:A0AF receiver, A09F cable)
+void PollRazerKrakenV3Pro(PollContext& ctx);  // Razer Kraken V3 Pro over its dongle's serial port (1532:052C)
+void PollLogitechHeadsets(PollContext& ctx);  // Logitech G321 (046D:0B39) and G735 (046D:0AD8) receivers
 void PollJbl(PollContext& ctx);       // JBL Quantum wireless headsets (HIDV1 and HIDV3)
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
