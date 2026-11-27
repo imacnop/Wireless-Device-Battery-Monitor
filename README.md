@@ -30,7 +30,16 @@ Battery levels of your wireless mouse, headset, keyboard, controller, phone and 
 - 📱 **iPhone shown once**: an iPhone paired twice with Windows (classic and LE) no longer appears twice.
 - 🐞 **Fewer duplicates**: a Corsair headset on its receiver and on a USB cable at the same time shows once.
 - 📨 **Device requests open a GitHub issue** in your browser, filled in for you; the app sends nothing itself.
-- 🔄 **Updates from this repository**, signed with this project's own release key.
+- 🔄 **Updates from this repository**, signed with this project's own release key, and optionally installed without asking.
+- 🖱️ **More devices**: FNATIC BOLT, ROCCAT Syn Max Air, Wraith W1 SE, Razer Kraken V3 Pro and Nari, Logitech G321 and
+  G735, MCHOSE X9 / V9 Turbo+, BEITONG KP70, Flydigi Apex 6, GameSir G7 Pro 8K, HyperX Cloud Stinger 3, JBL Quantum 800
+  and SONiX 0C45:FEFC keyboards, from what other BatteryHub projects found (see [Credits](#credits)).
+- 📏 **Steady percentages**: no more 60, 62, 61; a charging device is read every 15 s.
+- 🔔 **Fully charged notification** and **quiet hours** (no notifications from 10 pm to 8 am).
+- 🎨 **Icon colour per device**, and a **double-click opens the maker's app** (G HUB, Synapse, iCUE, GG, Armoury Crate).
+- 🎯 **DPI bubble** (experimental, off by default): the new DPI above the mouse when you press its DPI button
+  (Logitech, Razer, Wraith W1 SE).
+- 🧹 Settings of devices not seen for 30 days are forgotten.
 
 ## Contents
 
@@ -513,6 +522,17 @@ This version is maintained by **Robocnop** and **Imacnop**.
 App icon by [nik-txt](https://github.com/nik-txt) ([`res/app.svg`](res/app.svg)).
 
 The protocols come from these projects' research:
+
+- Other BatteryHub projects: [ferloom/Wireless-Device-Battery-Monitor](https://github.com/ferloom/Wireless-Device-Battery-Monitor)
+  (GPL-3.0; FNATIC BOLT, ROCCAT Syn Max Air, Kraken V3 Pro, Nari, G321, G735, MCHOSE X9, BEITONG KP70, Flydigi Apex 6,
+  GameSir G7 Pro 8K, HyperX Stinger 3, JBL Quantum 800, SONiX 0C45:FEFC facts gathered there) and
+  [BatteryDock](https://github.com/noctablabs/BatteryDock) (GPL-3.0; Wraith W1 SE, the DPI watcher and bubble, the
+  maker's app links, steady percentages)
+- [TaskbarVitals](https://github.com/symNistaken/TaskbarVitals) (GPL-3.0): Logitech G735;
+  [G321 Studio](https://github.com/gleyssonsc/g321-studio) (MIT): Logitech G321;
+  [razer-peripherals-protocol](https://github.com/immortalbob/razer-peripherals-protocol) and
+  [OmaKraken](https://github.com/Dankestrick/OmaKraken) (MIT): Razer Kraken V3 Pro;
+  [HaloBattery](https://github.com/HeyOkay/HaloBattery) (MIT): SONiX 0C45:FEFC, MCHOSE V9 Turbo+, Razer Nari fields
 
 - [OpenVR](https://github.com/ValveSoftware/openvr) (BSD-3-Clause): client core and `IVRSystem` interface layouts for reading VR device batteries
 
