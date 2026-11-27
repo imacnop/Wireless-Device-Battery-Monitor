@@ -272,3 +272,6 @@ Install updates without asking =
 Icon color = 
 Brand color = 
 Taskbar color = 
+Open {app} = 
+Double-click a device to open its maker's app = 
+Show the new DPI when it changes (experimental) = 

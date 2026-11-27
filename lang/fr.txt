@@ -261,3 +261,6 @@ Install updates without asking = Installer les mises à jour sans demander
 Icon color = Couleur de l'icône
 Brand color = Couleur de la marque
 Taskbar color = Couleur de la barre des tâches
+Open {app} = Ouvrir {app}
+Double-click a device to open its maker's app = Double-clic sur un appareil pour ouvrir le logiciel de la marque
+Show the new DPI when it changes (experimental) = Afficher le nouveau DPI quand il change (expérimental)

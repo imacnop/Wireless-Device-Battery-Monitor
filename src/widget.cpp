@@ -1432,6 +1432,21 @@ const std::vector<RECT>* RectsOf(HWND strip) {
     return nullptr;
 }
 
+}  // namespace
+
+bool widget::ItemScreenRect(int index, RECT& out) {
+    if (!g_wnd || !IsWindowVisible(g_wnd)) return false;
+    const auto* rects = RectsOf(g_wnd);
+    if (!rects || index < 0 || index >= (int)rects->size()) return false;
+    RECT r = (*rects)[(size_t)index], w;
+    if (r.left > r.right || r.top > r.bottom || !GetWindowRect(g_wnd, &w)) return false;
+    OffsetRect(&r, w.left, w.top);
+    out = r;
+    return true;
+}
+
+namespace {
+
 int ItemAt(HWND strip, POINT p) {
     if (g_items.empty()) return kCardMessage;
     const auto* rects = RectsOf(strip);
@@ -1879,7 +1894,10 @@ LRESULT CALLBACK WidgetProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             g_pressed = false;
             if (dragged) Drop(h);  // a drag is not a click
             if (msg == WM_LBUTTONUP && GetCapture() == h) ReleaseCapture();
-            if (!dragged) PostMessageW(g_notify, g_clickMsg, 0, 0);
+            // wParam: the device under a left click, 1-based (0 = none, or a right click).
+            int item = -1;
+            if (msg == WM_LBUTTONUP) item = ItemAt(h, POINT{ (short)LOWORD(lp), (short)HIWORD(lp) });
+            if (!dragged) PostMessageW(g_notify, g_clickMsg, item >= 0 ? (WPARAM)item + 1 : 0, 0);
             return 0;
         }
         case WM_MOUSEACTIVATE:

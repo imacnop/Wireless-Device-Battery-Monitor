@@ -41,6 +41,8 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme);
 void Destroy();
 bool Alive();
 void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip);
+// Screen rectangle of item `index` on the main strip (for the DPI bubble); false when not shown.
+bool ItemScreenRect(int index, RECT& out);
 // The card shown when the mouse rests on a device (on by default), and its 24-hour chart (on by default).
 // With the card off, the summary is shown as a plain tooltip instead.
 void SetCardOptions(bool card, bool chart);

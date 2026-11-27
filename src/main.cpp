@@ -40,6 +40,8 @@
 #include "rename_dialog.h"
 #include "offset_dialog.h"
 #include "widget.h"
+#include "dpi_watch.h"
+#include "dpi_osd.h"
 #include "update_win.h"
 #include "update_apply.h"
 
@@ -48,10 +50,12 @@ namespace {
 constexpr UINT WM_TRAY = WM_APP + 1;
 constexpr UINT WM_RESULTS = WM_APP + 2;
 constexpr UINT WM_WIDGET_CLICK = WM_APP + 3;
+constexpr UINT WM_DPI_CHANGE = WM_APP + 4;  // dpiwatch::Change* in lParam
 constexpr UINT_PTR TIMER_DEBOUNCE = 1;
 constexpr UINT_PTR TIMER_WIDGET = 2;
 constexpr UINT_PTR TIMER_ALERT_ICON = 3;
 constexpr UINT_PTR TIMER_RESUME = 4;
+constexpr UINT_PTR TIMER_CLICK = 5;  // a left click on a device waits this long for a double-click
 constexpr GUID kConsoleDisplayStateGuid = {
     0x6fe69556, 0x704a, 0x47a0, { 0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47 }
 };
@@ -67,7 +71,7 @@ enum MenuId : UINT {
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
     ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT, ID_PERCENT_SIGN, ID_RING_STYLE, ID_BEFORE_APPS, ID_CONNECTION_ICONS, ID_KEEP_MOUSE_LAST_KNOWN, ID_SHORT_RUNTIME_ALERT, ID_HOVER_CARD, ID_HOVER_CHART, ID_TRAY_DEVICE_ICONS, ID_ANIMATE_CHARGING, ID_TRACK_SINCE, ID_TRACK_AWAKE, ID_TRACK_EMPTY, ID_RUNTIME_WIDGET, ID_MODE_MYFINDER,
     ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
-    ID_STEADY_LEVELS, ID_NOTIFY_FULL, ID_QUIET_HOURS, ID_FAST_CHARGING, ID_FORGET_GONE,
+    ID_STEADY_LEVELS, ID_NOTIFY_FULL, ID_QUIET_HOURS, ID_FAST_CHARGING, ID_FORGET_GONE, ID_DOUBLE_CLICK_APP, ID_DPI_BUBBLE,
     ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_LIMIT_OFF = 600, ID_LIMIT_FIRST,  // "Notify when charged to": off, then alerts::kChargeLimits
@@ -80,6 +84,7 @@ enum DeviceCmd : UINT {
     DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME, DEV_HISTORY,
     DEV_ALERT_FIRST = 6, DEV_ALERT_DEFAULT = DEV_ALERT_FIRST + 8, DEV_ALERT_OFF,
     DEV_COLOR_AUTO = 16, DEV_COLOR_FIRST,  // "Icon color": automatic, then every Accent after None
+    DEV_OPEN_APP = 60,
     DEV_STRIDE = 64
 };
 
@@ -110,6 +115,8 @@ bool g_notifyFull = true;      // "fully charged" notification (menu option, on 
 bool g_quietHours = false;     // no notifications from 22:00 to 08:00 (menu option)
 std::atomic<bool> g_fastWhileCharging{ true };  // read every 15 s while a device charges (worker thread reads it)
 bool g_forgetGone = true;      // drop the settings of devices not seen for kForgetAfterDays (menu option)
+bool g_doubleClickApp = true;  // double-click a device on the strip to open its maker's app (menu option)
+bool g_dpiBubble = false;      // bubble with the new DPI when a mouse's DPI button is pressed (menu option, experimental)
 constexpr int kQuietFrom = 22, kQuietUntil = 8;
 constexpr ULONGLONG kForgetAfterDays = 30;
 constexpr DWORD kChargingPollMs = 15 * 1000;
@@ -164,6 +171,7 @@ struct TrayEntry {
     bool chargeLoaded = false;
 };
 std::map<std::wstring, TrayEntry> g_entries;
+std::vector<std::wstring> g_widgetKeys;  // strip item -> device key, as last passed to the widget
 std::vector<std::wstring> g_unsupported;  // seen wireless mice / keyboards without a battery driver, menu only (PR #2463)
 std::map<std::wstring, bool> g_alertLatches;  // survive transient removal of a device
 bool g_alertIconAdded = false;  // short-lived tray icon for widget-mode notifications
@@ -996,6 +1004,8 @@ void UpdateWidget() {
     std::vector<std::wstring> labels = ShortLabels(labelIn, 3);
     std::vector<WidgetItem> items;
     std::wstring tip;
+    g_widgetKeys.clear();
+    for (auto* e : list) g_widgetKeys.push_back(e->st.key);
     for (auto* e : list) {
         WidgetItem it;
         it.kind = e->st.kind;
@@ -1424,6 +1434,124 @@ void SetFarLeft(bool on) {
     widget::SetFarLeft(on);
 }
 
+void ShowMenu();
+
+// The maker's app of a device: the installed program when it is there, otherwise its web page.
+// Paths as BatteryDock (noctablabs/BatteryDock) uses them.
+struct VendorApp { std::wstring name, target; };
+
+std::wstring ExpandPath(const wchar_t* path) {
+    wchar_t buf[MAX_PATH * 2];
+    DWORD n = ExpandEnvironmentStringsW(path, buf, ARRAYSIZE(buf));
+    return n && n <= ARRAYSIZE(buf) ? std::wstring(buf) : std::wstring(path);
+}
+
+bool FindVendorApp(const DeviceStatus& s, VendorApp& app) {
+    auto program = [&](const wchar_t* name, std::initializer_list<const wchar_t*> paths, const wchar_t* web) {
+        app.name = name;
+        for (const wchar_t* p : paths) {
+            std::wstring e = ExpandPath(p);
+            DWORD a = GetFileAttributesW(e.c_str());
+            if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY)) { app.target = e; return true; }
+        }
+        app.target = web;
+        return true;
+    };
+    if (s.key.rfind(L"wraithw1", 0) == 0) { app = { L"Wraith web driver", L"https://www.w1.software/" }; return true; }
+    switch (s.vid) {
+        case 0x046D: return program(L"Logitech G HUB", { L"%ProgramFiles%\\LGHUB\\lghub.exe" }, L"https://www.logitechg.com/innovation/g-hub.html");
+        case 0x1532: return program(L"Razer Synapse", { L"%ProgramFiles%\\Razer\\RazerAppEngine\\RazerAppEngine.exe",
+                                                        L"%ProgramFiles(x86)%\\Razer\\Synapse3\\WPFUI\\Framework\\Razer Synapse 3 Host\\Razer Synapse 3.exe" },
+                                    L"https://www.razer.com/synapse-4");
+        case 0x1B1C: return program(L"Corsair iCUE", { L"%ProgramFiles%\\Corsair\\Corsair iCUE5 Software\\iCUE.exe",
+                                                       L"%ProgramFiles%\\Corsair\\CORSAIR iCUE 4 Software\\iCUE.exe" },
+                                    L"https://www.corsair.com/icue");
+        case 0x1038: return program(L"SteelSeries GG", { L"%ProgramFiles%\\SteelSeries\\GG\\SteelSeriesGGClient.exe" }, L"https://steelseries.com/gg");
+        case 0x0B05: app = { L"Armoury Crate", L"https://rog.asus.com/armoury-crate/" }; return true;
+    }
+    return false;
+}
+
+void OpenVendorApp(const std::wstring& key) {
+    auto it = g_entries.find(key);
+    VendorApp app;
+    if (it == g_entries.end() || !FindVendorApp(it->second.st, app)) return;
+    ShellExecuteW(g_hwnd, L"open", app.target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// Left clicks on the strip: with a device under the mouse that has a maker's app, the menu waits for the
+// double-click time, and a second click on the same device opens the app instead.
+std::wstring g_clickKey;
+
+void OnWidgetClick(WPARAM item) {
+    std::wstring key = item && item <= g_widgetKeys.size() ? g_widgetKeys[item - 1] : L"";
+    VendorApp app;
+    auto it = key.empty() ? g_entries.end() : g_entries.find(key);
+    bool hasApp = g_doubleClickApp && it != g_entries.end() && FindVendorApp(it->second.st, app);
+    if (hasApp && !g_clickKey.empty() && g_clickKey == key) {
+        KillTimer(g_hwnd, TIMER_CLICK);
+        g_clickKey.clear();
+        OpenVendorApp(key);
+        return;
+    }
+    KillTimer(g_hwnd, TIMER_CLICK);
+    g_clickKey.clear();
+    if (!hasApp) { ShowMenu(); return; }
+    g_clickKey = key;
+    SetTimer(g_hwnd, TIMER_CLICK, GetDoubleClickTime(), nullptr);
+}
+
+void RefreshSoon(UINT ms);
+
+// The DPI watcher saw a mouse answer again. If its entry still shows it asleep or without a level, read
+// the batteries now rather than at the next poll (at most every 10 s).
+void MouseAwake(const dpiwatch::Change& c) {
+    static ULONGLONG last = 0;
+    TrayEntry* e = nullptr;
+    if (auto it = g_entries.find(c.key); it != g_entries.end()) e = &it->second;
+    if (!e)
+        for (auto& [k, x] : g_entries)
+            if (x.st.vid == c.vid && x.st.kind == DeviceKind::Mouse) { e = &x; break; }
+    if (!e || !(e->st.asleep || e->st.percent < 0 || !e->st.connected)) return;
+    if (GetTickCount64() - last < 10000) return;
+    last = GetTickCount64();
+    RefreshSoon(200);
+}
+
+void ShowDpiBubble(const dpiwatch::Change& c) {
+    if (!g_dpiBubble) return;
+    // The watcher's key normally matches the battery entry; when it does not (cable and receiver, or another
+    // key), take the shown mouse of the same brand.
+    TrayEntry* e = nullptr;
+    if (auto it = g_entries.find(c.key); it != g_entries.end()) e = &it->second;
+    if (!e)
+        for (TrayEntry* x : OrderedEntries(true))
+            if (x->st.vid == c.vid && x->st.kind == DeviceKind::Mouse) { e = x; break; }
+    std::wstring key = e ? e->st.key : c.key;
+    dpiosd::Info info;
+    info.stage = c.stage;
+    info.count = c.stage >= 0 ? c.count : 0;
+    std::wstring level = c.stage >= 0 && c.count > 0 ? std::to_wstring(c.stage + 1) + L" / " + std::to_wstring(c.count) : L"";
+    if (c.dpi > 0) {
+        info.big = std::to_wstring(c.dpi) + L" DPI";
+        info.small = level;
+    } else {
+        info.big = L"DPI " + level;
+    }
+    info.light = g_lightTaskbar;
+    if (e && AccentFor(e->st) != Accent::None) {
+        BrandColor b = AccentColor(AccentFor(e->st), g_lightTaskbar);
+        info.accent = RGB(b.r, b.g, b.b);
+    } else {
+        info.accent = g_lightTaskbar ? RGB(0, 120, 212) : RGB(96, 205, 255);
+    }
+    if (g_useWidget) {
+        auto pos = std::find(g_widgetKeys.begin(), g_widgetKeys.end(), key);
+        if (pos != g_widgetKeys.end()) info.haveAnchor = widget::ItemScreenRect((int)(pos - g_widgetKeys.begin()), info.anchor);
+    }
+    dpiosd::Show(g_inst, info);
+}
+
 void SetIconColor(const std::wstring& key, unsigned accent) {
     if (accent) g_iconColors[key] = accent;
     else g_iconColors.erase(key);
@@ -1598,13 +1726,18 @@ void ShowMenu() {
             AppendMenuW(colors, MF_SEPARATOR, 0, nullptr);
             int count = 0;
             const BrandStyle* brands = AllBrands(count);
-            for (int i = 1; i < count && DEV_COLOR_FIRST + (i - 1) < DEV_STRIDE; i++) {
+            for (int i = 1; i < count && DEV_COLOR_FIRST + (i - 1) < DEV_OPEN_APP; i++) {
                 bool on = chosen != g_iconColors.end() && chosen->second == (unsigned long long)i;
                 AppendMenuW(colors, MF_STRING | (on ? MF_CHECKED : 0), base + DEV_COLOR_FIRST + (i - 1), brands[i].name);
                 icons.SwatchLast(colors, g_lightTaskbar ? brands[i].light : brands[i].dark);
             }
             AppendMenuW(sub, MF_POPUP, (UINT_PTR)colors, T(L"Icon color"));
             icons.SetLast(sub, 0xE790);  // Color
+        }
+        if (VendorApp app; FindVendorApp(e->st, app)) {
+            AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(sub, MF_STRING, base + DEV_OPEN_APP, TF(L"Open {app}", { { L"app", app.name } }).c_str());
+            icons.SetLast(sub, 0xE8A7);  // OpenInNewWindow
         }
         std::wstring line = DisplayName(*e) + L"  ·  " + StatusText(*e);
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
@@ -1750,6 +1883,9 @@ void ShowMenu() {
     AppendMenuW(display, emptyFlags, ID_TRAY_WHEN_EMPTY, T(L"Move to tray when no devices"));
     AppendMenuW(display, MF_STRING | (g_showDisconnectedDevices ? MF_CHECKED : 0), ID_SHOW_DISCONNECTED, T(L"Show disconnected devices"));
     AppendMenuW(display, MF_STRING | (g_steadyLevels ? MF_CHECKED : 0), ID_STEADY_LEVELS, T(L"Steady percentages (no 60, 62, 61 jumps)"));
+    AppendMenuW(display, MF_STRING | (g_doubleClickApp ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_DOUBLE_CLICK_APP,
+                T(L"Double-click a device to open its maker's app"));
+    AppendMenuW(display, MF_STRING | (g_dpiBubble ? MF_CHECKED : 0), ID_DPI_BUBBLE, T(L"Show the new DPI when it changes (experimental)"));
     AppendMenuW(display, MF_STRING | (g_forgetGone ? MF_CHECKED : 0), ID_FORGET_GONE, T(L"Forget devices not seen for 30 days"));
     AppendMenuW(display, MF_STRING | (g_dimSleeping ? MF_CHECKED : 0), ID_DIM_SLEEPING, T(L"Dim sleeping devices"));
     AppendMenuW(m, MF_POPUP, (UINT_PTR)display, T(L"Display settings"));
@@ -1913,6 +2049,13 @@ void ShowMenu() {
             SaveBoolSetting(L"SteadyLevels", g_steadyLevels);
             g_steady.clear();
             break;
+        case ID_DPI_BUBBLE:
+            g_dpiBubble = !g_dpiBubble;
+            SaveBoolSetting(L"DpiBubble", g_dpiBubble);
+            dpiwatch::SetEnabled(g_dpiBubble);
+            if (g_dpiBubble) dpiwatch::Rescan();
+            break;
+        case ID_DOUBLE_CLICK_APP: g_doubleClickApp = !g_doubleClickApp; SaveBoolSetting(L"DoubleClickOpensApp", g_doubleClickApp); break;
         case ID_NOTIFY_FULL: g_notifyFull = !g_notifyFull; SaveBoolSetting(L"NotifyFullyCharged", g_notifyFull); break;
         case ID_QUIET_HOURS: g_quietHours = !g_quietHours; SaveBoolSetting(L"QuietHours", g_quietHours); break;
         case ID_FAST_CHARGING:
@@ -1952,6 +2095,7 @@ void ShowMenu() {
                     case DEV_RIGHT:  MoveEntry(key, +1); break;
                     case DEV_RENAME: RenameDevice(key); break;
                     case DEV_RESET_NAME: ResetDeviceName(key); break;
+                    case DEV_OPEN_APP: OpenVendorApp(key); break;
                     case DEV_ALERT_DEFAULT: SetAlertOverride(key, alerts::kUseDefault); break;
                     case DEV_ALERT_OFF: SetAlertOverride(key, alerts::kDisabled); break;
                     case DEV_HISTORY: {
@@ -2148,8 +2292,15 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case WM_WIDGET_CLICK:
-            ShowMenu();
+            OnWidgetClick(wp);
             return 0;
+        case WM_DPI_CHANGE: {
+            auto* c = reinterpret_cast<dpiwatch::Change*>(lp);
+            if (c && c->awake) MouseAwake(*c);
+            else if (c) ShowDpiBubble(*c);
+            delete c;
+            return 0;
+        }
         case WM_ENDSESSION:  // sign-out / shutdown / installer restart manager
             if (wp) DestroyWindow(h);
             return 0;
@@ -2165,6 +2316,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 if (handle && wp == DBT_DEVICEREMOVECOMPLETE)
                     DropBluetoothRadioWatch(reinterpret_cast<const DEV_BROADCAST_HANDLE*>(lp)->dbch_handle);
                 RefreshSoon(2500);
+                dpiwatch::Rescan();
             } else if (handle && (wp == DBT_DEVICEQUERYREMOVE || wp == DBT_DEVICEREMOVEPENDING)) {
                 // Let the radio go: an open handle would block its removal.
                 DropBluetoothRadioWatch(reinterpret_cast<const DEV_BROADCAST_HANDLE*>(lp)->dbch_handle);
@@ -2193,6 +2345,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 g_awakeBeforeSleep = AwakeDevices();
             } else if (wp == PBT_APMRESUMEAUTOMATIC) {
                 RefreshAfterWake(5000);
+                dpiwatch::Rescan();
             } else if (wp == PBT_POWERSETTINGCHANGE && lp) {
                 // Modern Standby may not report a suspend / resume: the display turning off and on stands in.
                 auto* ps = reinterpret_cast<const POWERBROADCAST_SETTING*>(lp);
@@ -2213,6 +2366,11 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 SetEvent(g_refreshEvt);
             }
             if (wp == TIMER_WIDGET) { Reconcile(); updates::Tick(h); }
+            if (wp == TIMER_CLICK) {
+                KillTimer(h, TIMER_CLICK);
+                g_clickKey.clear();
+                ShowMenu();
+            }
             if (wp == TIMER_ALERT_ICON) {
                 KillTimer(h, TIMER_ALERT_ICON);
                 if (g_alertIconAdded) { TrayDelete(ALERT_ICON_ID); g_alertIconAdded = false; }
@@ -2226,6 +2384,8 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_DESTROY:
             updates::Shutdown();
+            dpiwatch::Stop();
+            dpiosd::Destroy();
             KillTimer(h, TIMER_DEBOUNCE);
             KillTimer(h, TIMER_RESUME);
             KillTimer(h, TIMER_WIDGET);
@@ -2454,6 +2614,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_quietHours = LoadBoolSetting(L"QuietHours", false);
     g_fastWhileCharging = LoadBoolSetting(L"FastWhileCharging", true);
     g_forgetGone = LoadBoolSetting(L"ForgetGoneDevices", true);
+    g_doubleClickApp = LoadBoolSetting(L"DoubleClickOpensApp", true);
+    g_dpiBubble = LoadBoolSetting(L"DpiBubble", false);
     g_hoverCard = LoadBoolSetting(L"HoverCard", true);
     g_hoverChart = LoadBoolSetting(L"HoverCardChart", true);
     widget::SetCardOptions(g_hoverCard, g_hoverChart);
@@ -2499,6 +2661,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);
     g_worker = CreateThread(nullptr, 0, Worker, nullptr, 0, nullptr);
+    if (!g_demo) {
+        // The watcher thread always runs; while the option is off it holds no handle and sends nothing.
+        dpiwatch::SetEnabled(g_dpiBubble);
+        dpiwatch::Start(g_hwnd, WM_DPI_CHANGE);
+    }
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
@@ -2508,6 +2675,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     }
     // drain results posted after shutdown started
     while (PeekMessageW(&m, nullptr, WM_RESULTS, WM_RESULTS, PM_REMOVE)) delete reinterpret_cast<std::vector<DeviceStatus>*>(m.lParam);
+    while (PeekMessageW(&m, nullptr, WM_DPI_CHANGE, WM_DPI_CHANGE, PM_REMOVE)) delete reinterpret_cast<dpiwatch::Change*>(m.lParam);
     if (notify) UnregisterDeviceNotification(notify);
     if (radioNotify) UnregisterDeviceNotification(radioNotify);
     ClearBluetoothRadioWatches();
