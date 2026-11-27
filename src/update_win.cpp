@@ -30,6 +30,9 @@ Operation operation = Operation::Idle;
 ReleaseInfo known;
 CheckSchedule schedule;
 bool automatic = true, manual = false, dialogOpen = false;
+// "Install updates without asking": a new release found by the automatic check is downloaded, verified
+// and installed with no dialog. Per-user installs only, so no elevation prompt appears either.
+bool silent = false, silentDownload = false;
 ULONGLONG started = 0;
 std::thread worker;
 std::mutex resultMutex;
@@ -41,6 +44,7 @@ std::wstring lastError;
 HANDLE applyProcess = nullptr;
 
 void Cancel() { cancelled = true; }
+void StartSilentDownload();
 
 HWND DialogOwner(HWND owner) {
     // The application's main window is hidden; TaskDialog requires a visible, enabled parent.
@@ -229,6 +233,10 @@ void Initialize() {
     DWORD enabled = 1, size = sizeof(enabled);
     RegGetValueW(HKEY_CURRENT_USER, Settings, L"AutoCheckUpdates", RRF_RT_REG_DWORD, nullptr, &enabled, &size);
     automatic = enabled != 0;
+    DWORD quiet = 0;
+    size = sizeof(quiet);
+    RegGetValueW(HKEY_CURRENT_USER, Settings, L"SilentUpdates", RRF_RT_REG_DWORD, nullptr, &quiet, &size);
+    silent = quiet != 0;
     if (!appversion::official) return;
     schedule = { ReadTime(L"LastAttempt"), ReadTime(L"NextAutomatic"), ReadTime(L"RetryAfter") };
     wchar_t tag[64]{};
@@ -258,6 +266,26 @@ void Tick(HWND owner) {
         }
         return;
     }
+    if (operation == Operation::Downloading && silentDownload) {
+        if (!done.exchange(false)) return;
+        if (worker.joinable()) worker.join();
+        Result downloaded;
+        { std::lock_guard<std::mutex> lock(resultMutex); downloaded = std::move(result); }
+        silentDownload = false;
+        operation = Operation::Idle;
+        schedule.Finished(Now(), downloaded.metadataValid, downloaded.retry);
+        SaveSchedule();
+        if (downloaded.metadataValid) { known = downloaded.release; SaveKnown(); }
+        if (!downloaded.success) {
+            lastError = downloaded.error;
+            if (!downloaded.file.empty()) DeleteFileW(downloaded.file.c_str());
+        } else if (!StartApply(owner, downloaded.file, downloaded.release, &applyProcess)) {
+            DeleteFileW(downloaded.file.c_str());
+        } else {
+            operation = Operation::Installing;
+        }
+        return;
+    }
     if (operation == Operation::Downloading) return; // The explicit progress dialog owns completion.
     if (operation != Operation::Idle && !done && GetTickCount64() - started >= 30000) Cancel();
     if (done.exchange(false)) {
@@ -269,6 +297,13 @@ void Tick(HWND owner) {
         SaveSchedule();
         lastError = completed.error;
         if (completed.success) { known = completed.release; SaveKnown(); }
+        if (!manual && completed.success && SilentEnabled() && !known.tag.empty() && known.CanInstall()) {
+            Installation installed = FindInstallation(ExecutablePath());
+            if (installed.valid && !installed.allUsers) {
+                StartSilentDownload();
+                return;
+            }
+        }
         if (manual) {
             manual = false;
             if (!completed.success) ShowMessage(owner, lastError.c_str());
@@ -291,6 +326,13 @@ void Shutdown() {
 bool Busy() { return dialogOpen || operation != Operation::Idle; }
 bool AutomaticEnabled() { return automatic && appversion::official; }
 bool Supported() { return appversion::official; }
+bool SilentEnabled() { return silent && AutomaticEnabled(); }
+void ToggleSilent() {
+    if (!appversion::official) return;
+    silent = !silent;
+    DWORD value = silent;
+    RegSetKeyValueW(HKEY_CURRENT_USER, Settings, L"SilentUpdates", REG_DWORD, &value, sizeof(value));
+}
 void ToggleAutomatic() {
     if (!appversion::official) return;
     automatic = !automatic;
@@ -470,6 +512,21 @@ Result DownloadRelease() {
             L"The update could not be downloaded or its integrity could not be verified. Your current version was kept.";
     }
     return out;
+}
+
+void StartSilentDownload() {
+    if (Busy() || shuttingDown) return;
+    operation = Operation::Downloading;
+    silentDownload = true;
+    cancelled = false;
+    done = false;
+    progress = 0;
+    started = GetTickCount64();
+    worker = std::thread([] {
+        Result downloaded = DownloadRelease();
+        { std::lock_guard<std::mutex> lock(resultMutex); result = std::move(downloaded); }
+        done = true;
+    });
 }
 
 struct DownloadDialogState { bool automaticClose = false; };

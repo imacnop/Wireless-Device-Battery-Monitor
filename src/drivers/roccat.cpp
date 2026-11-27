@@ -4,7 +4,7 @@
 //   reply   8A 83 06 02 <level 0..5, 6 charging> 00 <mV lo> <mV hi> <filtered mV, 2 bytes> <01 = charging>
 // Byte 0 is a tag the headset echoes; the receiver answers other tags itself and the headset pushes
 // E0..E6 events, both skipped. The percentage comes from the voltage (curve measured under audio + RGB
-// load over a 16 h discharge); while charging the voltage means little and only "Charging" is shown.
+// load over a 16 h discharge); while charging the voltage means little and only the charging state is shown.
 // From USBPcap captures of ROCCAT Swarm for ferloom/Wireless-Device-Battery-Monitor; untested here.
 #include "drivers.h"
 
@@ -64,7 +64,7 @@ void PollRoccat(PollContext& ctx) {
         s.charging = r.size() > 10 && r[10] == 0x01;
         if (s.charging) {
             s.full = mv >= 4180;
-            s.levelText = s.full ? L"Full" : L"Charging";
+            if (s.full) s.levelText = L"Full";
         } else {
             s.percent = PercentFromMv(mv);
         }

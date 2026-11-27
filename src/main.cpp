@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <atomic>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -24,6 +25,7 @@
 
 #include "device_aliases.h"
 #include "alert_rules.h"
+#include "steady_level.h"
 #include "devices.h"
 #include "battery_history.h"
 #include "charge_estimate.h"
@@ -65,17 +67,20 @@ enum MenuId : UINT {
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
     ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT, ID_PERCENT_SIGN, ID_RING_STYLE, ID_BEFORE_APPS, ID_CONNECTION_ICONS, ID_KEEP_MOUSE_LAST_KNOWN, ID_SHORT_RUNTIME_ALERT, ID_HOVER_CARD, ID_HOVER_CHART, ID_TRAY_DEVICE_ICONS, ID_ANIMATE_CHARGING, ID_TRACK_SINCE, ID_TRACK_AWAKE, ID_TRACK_EMPTY, ID_RUNTIME_WIDGET, ID_MODE_MYFINDER,
     ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
+    ID_STEADY_LEVELS, ID_NOTIFY_FULL, ID_QUIET_HOURS, ID_FAST_CHARGING, ID_FORGET_GONE,
     ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_LIMIT_OFF = 600, ID_LIMIT_FIRST,  // "Notify when charged to": off, then alerts::kChargeLimits
-    ID_UPDATE = 200, ID_AUTO_UPDATE,
+    ID_UPDATE = 200, ID_AUTO_UPDATE, ID_SILENT_UPDATE,
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
 };
 enum DeviceCmd : UINT {
     DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME, DEV_HISTORY,
-    DEV_ALERT_FIRST = 6, DEV_ALERT_DEFAULT = DEV_ALERT_FIRST + 8, DEV_ALERT_OFF, DEV_STRIDE = 16
+    DEV_ALERT_FIRST = 6, DEV_ALERT_DEFAULT = DEV_ALERT_FIRST + 8, DEV_ALERT_OFF,
+    DEV_COLOR_AUTO = 16, DEV_COLOR_FIRST,  // "Icon color": automatic, then every Accent after None
+    DEV_STRIDE = 64
 };
 
 const wchar_t* kAppName = L"BatteryHub";
@@ -100,6 +105,14 @@ bool g_dimSleeping = true;  // dim a sleeping device's last known value (menu op
 bool g_recordHistory = true;  // save readings for "Battery history..." (menu option, on by default)
 int g_chargeLimit = 0;        // "Notify when charged to" 80/85/90%, 0 = off (the default)
 bool g_shortRuntimeAlert = true;  // "charge today" notification when the time-to-empty is under 12 h (menu option)
+bool g_steadyLevels = true;    // smooth away 60 -> 62 -> 61 wobble (menu option, on by default)
+bool g_notifyFull = true;      // "fully charged" notification (menu option, on by default)
+bool g_quietHours = false;     // no notifications from 22:00 to 08:00 (menu option)
+std::atomic<bool> g_fastWhileCharging{ true };  // read every 15 s while a device charges (worker thread reads it)
+bool g_forgetGone = true;      // drop the settings of devices not seen for kForgetAfterDays (menu option)
+constexpr int kQuietFrom = 22, kQuietUntil = 8;
+constexpr ULONGLONG kForgetAfterDays = 30;
+constexpr DWORD kChargingPollMs = 15 * 1000;
 bool g_hoverCard = true;       // card when the mouse rests on a device (off: plain tooltip)
 bool g_hoverChart = true;      // 24-hour chart in that card
 bool g_animateCharging = true;  // charging icons fill in a loop on the taskbar (menu option, PR #2463; on by default since 1.4.0)
@@ -142,6 +155,7 @@ struct TrayEntry {
     bool added = false;
     bool lowWarned = false;
     bool limitWarned = false;  // "unplug at 80%" already shown during this charge
+    bool fullWarned = false;   // "fully charged" already shown during this charge
     bool shortWarned = false;  // "charge today" already shown during this discharge
     charge::Tracker charge;    // readings of the current charge, for "full in ~40 min"
     std::wstring iconSig;    // what the current icon shows, to avoid needless redraws
@@ -285,6 +299,27 @@ class MenuIcons {
         SetMenuItemInfoW(menu, item, byPosition ? TRUE : FALSE, &mii);
     }
     void SetLast(HMENU menu, wchar_t glyph) { Set(menu, (UINT)GetMenuItemCount(menu) - 1, true, glyph); }
+    // A round colour swatch on the last item (the "Icon color" choices).
+    void SwatchLast(HMENU menu, BrandColor c) {
+        BITMAPINFO bi{};
+        bi.bmiHeader = { sizeof(BITMAPINFOHEADER), size_, -size_, 1, 32, BI_RGB };
+        void* bits = nullptr;
+        HBITMAP bmp = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (!bmp) return;
+        auto* p = static_cast<DWORD*>(bits);
+        const double mid = (size_ - 1) / 2.0, radius = size_ * 0.4;
+        for (int y = 0; y < size_; y++)
+            for (int x = 0; x < size_; x++) {
+                double d = std::sqrt((x - mid) * (x - mid) + (y - mid) * (y - mid));
+                int a = (int)(std::clamp(radius + 0.5 - d, 0.0, 1.0) * 255);
+                p[y * size_ + x] = ((DWORD)a << 24) | ((DWORD)(c.r * a / 255) << 16) | ((DWORD)(c.g * a / 255) << 8) | (DWORD)(c.b * a / 255);
+            }
+        bitmaps_.push_back(bmp);
+        MENUITEMINFOW mii{ sizeof(mii) };
+        mii.fMask = MIIM_BITMAP;
+        mii.hbmpItem = bmp;
+        SetMenuItemInfoW(menu, (UINT)GetMenuItemCount(menu) - 1, TRUE, &mii);
+    }
 
   private:
     HBITMAP Make(wchar_t glyph) {
@@ -442,6 +477,38 @@ void SaveAlertThresholds() {
     RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"AlertThresholds", REG_MULTI_SZ,
                     multi.data(), (DWORD)(multi.size() * sizeof(wchar_t)));
 }
+
+// "device-key<TAB>number" lines in a REG_MULTI_SZ, for the per-device icon colour and the last-seen times.
+std::map<std::wstring, unsigned long long> LoadKeyNumbers(const wchar_t* value) {
+    std::map<std::wstring, unsigned long long> out;
+    DWORD size = 0;
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, value, RRF_RT_REG_MULTI_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS ||
+        size < 2 * sizeof(wchar_t) || size > 256 * 1024) return out;
+    std::vector<wchar_t> buf(size / sizeof(wchar_t) + 2, 0);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, value, RRF_RT_REG_MULTI_SZ, nullptr, buf.data(), &size) != ERROR_SUCCESS)
+        return out;
+    for (const wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
+        std::wstring line = p;
+        size_t tab = line.rfind(L'\t');
+        if (tab == std::wstring::npos || tab == 0) continue;
+        out[line.substr(0, tab)] = wcstoull(line.c_str() + tab + 1, nullptr, 10);
+    }
+    return out;
+}
+
+void SaveKeyNumbers(const wchar_t* value, const std::map<std::wstring, unsigned long long>& m) {
+    std::wstring multi;
+    for (const auto& [key, n] : m) { multi += key + L"\t" + std::to_wstring(n); multi.push_back(L'\0'); }
+    multi.push_back(L'\0');
+    if (multi.size() == 1) multi.push_back(L'\0');
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, value, REG_MULTI_SZ, multi.data(), (DWORD)(multi.size() * sizeof(wchar_t)));
+}
+
+// Per-device icon colour chosen in the device menu: an Accent (not None). Wins over "Brand colors".
+std::map<std::wstring, unsigned long long> g_iconColors;
+// When each device was last seen (seconds since 1970), so the settings of a device gone for good can go.
+std::map<std::wstring, unsigned long long> g_lastSeen;
+ULONGLONG g_lastSeenSaved = 0;
 
 bool LoadWidgetMode() { return LoadBoolSetting(L"TaskbarWidget", true); }
 void SaveWidgetMode(bool on) { SaveBoolSetting(L"TaskbarWidget", on); }
@@ -659,7 +726,13 @@ HICON RenderIcon(const std::wstring& text, int barPct, Rgb textColor, Rgb barCol
 
 Rgb Foreground() { return g_lightTaskbar ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 }; }
 
-Accent AccentFor(const DeviceStatus& s) { return g_brandColors ? BrandOf(s) : Accent::None; }
+Accent AccentFor(const DeviceStatus& s) {
+    int count = 0;
+    AllBrands(count);
+    if (auto it = g_iconColors.find(s.key); it != g_iconColors.end() && it->second > 0 && (int)it->second < count)
+        return (Accent)it->second;
+    return g_brandColors ? BrandOf(s) : Accent::None;
+}
 
 // glyph != 0: the device's symbol with the level as the bar, instead of the number (option, PR #1632).
 HICON IconFor(int pct, bool charging, bool dim, Accent accent, wchar_t glyph = 0) {
@@ -792,7 +865,15 @@ void TrayDelete(UINT uid) {
     Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
+bool QuietNow() {
+    if (!g_quietHours) return false;
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    return alerts::InQuietHours(t.wHour, kQuietFrom, kQuietUntil);
+}
+
 void ShowNotification(TrayEntry& e, const std::wstring& title, const std::wstring& message) {
+    if (QuietNow()) return;
     if (!g_useWidget && e.added) {
         TrayCall(NIM_MODIFY, e.uid, e.icon, DisplayName(e) + L"\n" + StatusText(e), title.c_str(), message);
         return;
@@ -814,6 +895,10 @@ void ShowChargeLimitAlert(TrayEntry& e) {
     ShowNotification(e, T(L"You can unplug it"),
                      TF(L"{name} is charged to {percent}%. Stopping around here helps the battery last longer.",
                         { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(e.st.percent) } }));
+}
+
+void ShowFullAlert(TrayEntry& e) {
+    ShowNotification(e, T(L"Fully charged"), TF(L"{name} is fully charged", { { L"name", DisplayName(e) } }));
 }
 
 // The time-to-empty estimate says the device will not last the next 12 hours: once per discharge.
@@ -1023,6 +1108,58 @@ void SmoothCharging(DeviceStatus& s) {
     }
 }
 
+std::map<std::wstring, steady::Level> g_steady;
+
+void NoteSeen(const std::vector<DeviceStatus>& results) {
+    const unsigned long long now = NowSec();
+    bool fresh = false;
+    for (const auto& s : results) {
+        fresh |= !g_lastSeen.count(s.key);
+        g_lastSeen[s.key] = now;
+    }
+    // A new device is saved at once; otherwise every few hours is enough for a 30-day limit.
+    if (fresh || GetTickCount64() - g_lastSeenSaved > 6ull * 60 * 60 * 1000) {
+        SaveKeyNumbers(L"DeviceLastSeen", g_lastSeen);
+        g_lastSeenSaved = GetTickCount64();
+    }
+}
+
+// Settings of devices not seen for kForgetAfterDays go: their place, hidden flag, name, alert level and
+// colour. Their battery history has its own 30-day limit. Keys known from before this existed get today
+// as their last sighting, so nothing is dropped the first time.
+void ForgetGoneDevices() {
+    const unsigned long long now = NowSec();
+    bool stamped = false;
+    auto stamp = [&](const std::wstring& k) { if (!g_lastSeen.count(k)) { g_lastSeen[k] = now; stamped = true; } };
+    for (const auto& k : g_order) stamp(k);
+    for (const auto& k : g_hidden) stamp(k);
+    for (const auto& [k, v] : g_aliases) stamp(k);
+    for (const auto& [k, v] : g_alertOverrides) stamp(k);
+    for (const auto& [k, v] : g_iconColors) stamp(k);
+    std::vector<std::wstring> gone;
+    if (g_forgetGone)
+        for (const auto& [k, at] : g_lastSeen)
+            if (at && now > at && now - at > kForgetAfterDays * 24 * 60 * 60) gone.push_back(k);
+    if (gone.empty()) {
+        if (stamped) SaveKeyNumbers(L"DeviceLastSeen", g_lastSeen);
+        return;
+    }
+    for (const auto& k : gone) {
+        g_order.erase(std::remove(g_order.begin(), g_order.end(), k), g_order.end());
+        g_hidden.erase(k);
+        g_aliases.erase(k);
+        g_alertOverrides.erase(k);
+        g_iconColors.erase(k);
+        g_lastSeen.erase(k);
+    }
+    SaveOrder();
+    SaveHidden();
+    SaveAliases();
+    SaveAlertThresholds();
+    SaveKeyNumbers(L"IconColors", g_iconColors);
+    SaveKeyNumbers(L"DeviceLastSeen", g_lastSeen);
+}
+
 void OnResults(std::vector<DeviceStatus>& results) {
     g_unsupported.clear();
     results.erase(std::remove_if(results.begin(), results.end(), [](const DeviceStatus& s) {
@@ -1030,6 +1167,11 @@ void OnResults(std::vector<DeviceStatus>& results) {
                       return s.unsupported;
                   }), results.end());
     for (auto& s : results) SmoothCharging(s);
+    if (g_steadyLevels)
+        for (auto& s : results)
+            if (s.connected && !s.asleep && s.percent >= 0 && s.percent <= 100 && !s.full)
+                s.percent = steady::Filter(g_steady[s.key], s.percent, s.charging, GetTickCount64());
+    NoteSeen(results);
     std::map<std::wstring, bool> seen;
     ULONGLONG tick = GetTickCount64();
     ULONGLONG sampleMs = g_lastPollTick ? std::min<ULONGLONG>(tick - g_lastPollTick, g_pollIntervalMs) : 0;
@@ -1054,6 +1196,7 @@ void OnResults(std::vector<DeviceStatus>& results) {
         if (g_recordHistory && s.connected && !s.asleep && s.percent >= 0)
             battery_history::Observe(s.key, s.percent, s.charging);
         bool limit = !IsHidden(s.key) && alerts::ShouldNotifyChargeLimit(s, g_chargeLimit, previousPercent, e.limitWarned);
+        bool full = alerts::ShouldNotifyFull(s, previousPercent, e.fullWarned) && g_notifyFull && !IsHidden(s.key);
         if (s.connected && !s.asleep) charge::Observe(e.charge, s.charging, s.percent, (int64_t)time(nullptr));
         bool shortRuntime = false;
         std::wstring left;
@@ -1072,6 +1215,7 @@ void OnResults(std::vector<DeviceStatus>& results) {
         ApplyEntry(e);
         if (notify) ShowBatteryAlert(e);
         else if (limit) ShowChargeLimitAlert(e);
+        else if (full) ShowFullAlert(e);
         else if (shortRuntime && !left.empty()) ShowShortRuntimeAlert(e, left);
     }
     // Devices answering right now, by name: a device plugged in by cable (or on Bluetooth) also
@@ -1280,6 +1424,14 @@ void SetFarLeft(bool on) {
     widget::SetFarLeft(on);
 }
 
+void SetIconColor(const std::wstring& key, unsigned accent) {
+    if (accent) g_iconColors[key] = accent;
+    else g_iconColors.erase(key);
+    SaveKeyNumbers(L"IconColors", g_iconColors);
+    for (auto& [k, e] : g_entries) ApplyEntry(e);
+    UpdateWidget();
+}
+
 void SetBrandColors(bool on) {
     g_brandColors = on;
     SaveBrandColors(on);
@@ -1438,6 +1590,22 @@ void ShowMenu() {
         icons.SetLast(sub, 0xEA8F);  // Ringer
         AppendMenuW(sub, MF_STRING, base + DEV_HISTORY, T(L"Battery history..."));
         icons.SetLast(sub, 0xE81C);  // History
+        {
+            HMENU colors = CreatePopupMenu();
+            const auto chosen = g_iconColors.find(k);
+            AppendMenuW(colors, MF_STRING | (chosen == g_iconColors.end() ? MF_CHECKED : 0), base + DEV_COLOR_AUTO,
+                        g_brandColors ? T(L"Brand color") : T(L"Taskbar color"));
+            AppendMenuW(colors, MF_SEPARATOR, 0, nullptr);
+            int count = 0;
+            const BrandStyle* brands = AllBrands(count);
+            for (int i = 1; i < count && DEV_COLOR_FIRST + (i - 1) < DEV_STRIDE; i++) {
+                bool on = chosen != g_iconColors.end() && chosen->second == (unsigned long long)i;
+                AppendMenuW(colors, MF_STRING | (on ? MF_CHECKED : 0), base + DEV_COLOR_FIRST + (i - 1), brands[i].name);
+                icons.SwatchLast(colors, g_lightTaskbar ? brands[i].light : brands[i].dark);
+            }
+            AppendMenuW(sub, MF_POPUP, (UINT_PTR)colors, T(L"Icon color"));
+            icons.SetLast(sub, 0xE790);  // Color
+        }
         std::wstring line = DisplayName(*e) + L"  ·  " + StatusText(*e);
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         icons.SetLast(m, widget::DeviceGlyph(e->st.kind, e->st.via == L"Bluetooth"));
@@ -1467,6 +1635,8 @@ void ShowMenu() {
     }
     AppendMenuW(m, MF_STRING | (g_shortRuntimeAlert ? MF_CHECKED : 0) | (g_recordHistory ? 0 : MF_GRAYED), ID_SHORT_RUNTIME_ALERT,
                 T(L"Warn when a battery won't last the day"));
+    AppendMenuW(m, MF_STRING | (g_notifyFull ? MF_CHECKED : 0), ID_NOTIFY_FULL, T(L"Notify when fully charged"));
+    AppendMenuW(m, MF_STRING | (g_quietHours ? MF_CHECKED : 0), ID_QUIET_HOURS, T(L"No notifications from 10 pm to 8 am"));
     {
         HMENU sub = CreatePopupMenu();
         AppendMenuW(sub, MF_STRING | (g_trackSince ? MF_CHECKED : 0), ID_TRACK_SINCE, T(L"Time since charge"));
@@ -1579,6 +1749,8 @@ void ShowMenu() {
     UINT emptyFlags = MF_STRING | (g_trayWhenEmpty ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
     AppendMenuW(display, emptyFlags, ID_TRAY_WHEN_EMPTY, T(L"Move to tray when no devices"));
     AppendMenuW(display, MF_STRING | (g_showDisconnectedDevices ? MF_CHECKED : 0), ID_SHOW_DISCONNECTED, T(L"Show disconnected devices"));
+    AppendMenuW(display, MF_STRING | (g_steadyLevels ? MF_CHECKED : 0), ID_STEADY_LEVELS, T(L"Steady percentages (no 60, 62, 61 jumps)"));
+    AppendMenuW(display, MF_STRING | (g_forgetGone ? MF_CHECKED : 0), ID_FORGET_GONE, T(L"Forget devices not seen for 30 days"));
     AppendMenuW(display, MF_STRING | (g_dimSleeping ? MF_CHECKED : 0), ID_DIM_SLEEPING, T(L"Dim sleeping devices"));
     AppendMenuW(m, MF_POPUP, (UINT_PTR)display, T(L"Display settings"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -1624,6 +1796,8 @@ void ShowMenu() {
             if (s * 1000 == g_pollIntervalMs) checked = ID_POLL_FIRST + i;
         }
         if (checked) CheckMenuRadioItem(sub, ID_POLL_FIRST, ID_POLL_FIRST + count - 1, checked, MF_BYCOMMAND);
+        AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(sub, MF_STRING | (g_fastWhileCharging ? MF_CHECKED : 0), ID_FAST_CHARGING, T(L"Every 15 s while charging"));
         AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Check battery every"));
         icons.SetLast(m, 0xE916);  // Stopwatch
     }
@@ -1635,6 +1809,9 @@ void ShowMenu() {
     UINT updateFlags = MF_STRING | (updates::AutomaticEnabled() ? MF_CHECKED : 0) |
                        (updates::Supported() ? 0 : MF_GRAYED);
     AppendMenuW(m, updateFlags, ID_AUTO_UPDATE, T(L"Automatically check for updates"));
+    UINT silentFlags = MF_STRING | (updates::SilentEnabled() ? MF_CHECKED : 0) |
+                       (updates::Supported() && updates::AutomaticEnabled() ? 0 : MF_GRAYED);
+    AppendMenuW(m, silentFlags, ID_SILENT_UPDATE, T(L"Install updates without asking"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_EXIT, T(L"Exit"));
     icons.Set(m, ID_REFRESH, false, 0xE72C);         // Refresh
@@ -1730,6 +1907,24 @@ void ShowMenu() {
         case ID_REPORT: report::Show(g_inst, g_hwnd); break;
         case ID_UPDATE: updates::Activate(g_hwnd); break;
         case ID_AUTO_UPDATE: updates::ToggleAutomatic(); break;
+        case ID_SILENT_UPDATE: updates::ToggleSilent(); break;
+        case ID_STEADY_LEVELS:
+            g_steadyLevels = !g_steadyLevels;
+            SaveBoolSetting(L"SteadyLevels", g_steadyLevels);
+            g_steady.clear();
+            break;
+        case ID_NOTIFY_FULL: g_notifyFull = !g_notifyFull; SaveBoolSetting(L"NotifyFullyCharged", g_notifyFull); break;
+        case ID_QUIET_HOURS: g_quietHours = !g_quietHours; SaveBoolSetting(L"QuietHours", g_quietHours); break;
+        case ID_FAST_CHARGING:
+            g_fastWhileCharging = !g_fastWhileCharging;
+            SaveBoolSetting(L"FastWhileCharging", g_fastWhileCharging);
+            SetEvent(g_refreshEvt);
+            break;
+        case ID_FORGET_GONE:
+            g_forgetGone = !g_forgetGone;
+            SaveBoolSetting(L"ForgetGoneDevices", g_forgetGone);
+            if (g_forgetGone) ForgetGoneDevices();
+            break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
         default:
             if (cmd >= ID_POSITION_FIRST && cmd < ID_POSITION_FIRST + ARRAYSIZE(POSITION_OFFSETS)) {
@@ -1769,6 +1964,10 @@ void ShowMenu() {
                         UINT slot = (cmd - ID_DEVICE_FIRST) % DEV_STRIDE;
                         if (slot >= DEV_ALERT_FIRST && slot < DEV_ALERT_FIRST + alerts::kThresholdCount)
                             SetAlertOverride(key, alerts::kThresholds[slot - DEV_ALERT_FIRST]);
+                        else if (slot == DEV_COLOR_AUTO)
+                            SetIconColor(key, 0);
+                        else if (slot >= DEV_COLOR_FIRST)
+                            SetIconColor(key, slot - DEV_COLOR_FIRST + 1);
                         break;
                     }
                 }
@@ -1911,6 +2110,9 @@ DWORD WINAPI Worker(LPVOID) {
 
         auto* v = new std::vector<DeviceStatus>(g_demo ? DemoDevices() : PollAllDevices());
         DWORD delay = monitor.DelayAfterPoll(*v, g_pollIntervalMs);
+        if (g_fastWhileCharging && delay > kChargingPollMs &&
+            std::any_of(v->begin(), v->end(), [](const DeviceStatus& s) { return s.connected && !s.asleep && s.charging && !s.full; }))
+            delay = kChargingPollMs;
         if (!PostMessageW(g_hwnd, WM_RESULTS, 0, (LPARAM)v)) delete v;
         DWORD wait = WaitForMultipleObjects(2, events, FALSE, delay);
         if (wait == WAIT_OBJECT_0) return 0;
@@ -2247,6 +2449,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_recordHistory = LoadRecordHistory();
     g_chargeLimit = LoadChargeLimit();
     g_shortRuntimeAlert = LoadBoolSetting(L"ShortRuntimeAlert", true);
+    g_steadyLevels = LoadBoolSetting(L"SteadyLevels", true);
+    g_notifyFull = LoadBoolSetting(L"NotifyFullyCharged", true);
+    g_quietHours = LoadBoolSetting(L"QuietHours", false);
+    g_fastWhileCharging = LoadBoolSetting(L"FastWhileCharging", true);
+    g_forgetGone = LoadBoolSetting(L"ForgetGoneDevices", true);
     g_hoverCard = LoadBoolSetting(L"HoverCard", true);
     g_hoverChart = LoadBoolSetting(L"HoverCardChart", true);
     widget::SetCardOptions(g_hoverCard, g_hoverChart);
@@ -2284,6 +2491,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     LoadOrder();
     LoadAliases();
     LoadAlertThresholds();
+    g_iconColors = LoadKeyNumbers(L"IconColors");
+    g_lastSeen = LoadKeyNumbers(L"DeviceLastSeen");
+    if (!g_demo) ForgetGoneDevices();
     battery_history::Initialize(g_demo);
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes

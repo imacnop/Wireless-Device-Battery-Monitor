@@ -14,6 +14,8 @@ bool Busy();
 bool AutomaticEnabled();
 bool Supported();
 void ToggleAutomatic();
+bool SilentEnabled();  // "Install updates without asking" (needs the automatic check)
+void ToggleSilent();
 void Activate(HWND owner);
 
 // Native helpers also used by the download worker and temporary installer helper.
