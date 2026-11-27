@@ -137,6 +137,7 @@ const XentaModel kXentaModels[] = {
     { 0x30, L"Delux M900 Pro", false },
     { 0x50, L"Delux M900 Pro", false },
     { 0x55, L"Attack Shark X11", false },
+    { 0x47, L"IO Nova SE", false },  // 03 47 40 01 64 on its dongle (ferloom/Wireless-Device-Battery-Monitor #172)
     { 0x4E, L"Attack Shark X3 Max", false },
     { 0xE5, L"Attack Shark V3 Pro", false },
     { 0x24, L"Attack Shark V6", false },
@@ -157,7 +158,9 @@ struct XentaListener {
 std::map<std::wstring, XentaListener> g_xenta;  // by collection path
 
 void PollXenta(PollContext& ctx) {
-    const USHORT pids[] = { 0xFA60, 0xFA61, 0xFA65, 0xFA55, 0x2155 };
+    // 2015: IO Nova SE on its USB cable, the same frames on 000A:0000 (USB capture in
+    // ferloom/Wireless-Device-Battery-Monitor issue #172).
+    const USHORT pids[] = { 0xFA60, 0xFA61, 0xFA65, 0xFA55, 0x2155, 0x2015 };
     std::set<std::wstring> present;
     for (USHORT pid : pids) {
         if (ctx.IsClaimed(0x1D57, pid)) continue;
@@ -209,7 +212,7 @@ void PollXenta(PollContext& ctx) {
                 GetTickCount64() - l.ardorConfirmedAt <= 45000;
             if (l.last.empty()) continue;
             if (!ardorActive && GetTickCount64() - l.lastFrameAt > 15000) continue;  // other Xenta / stale
-            bool cable = pid == 0xFA55 || pid == 0x2155;
+            bool cable = pid == 0xFA55 || pid == 0x2155 || pid == 0x2015;
             xenta_protocol::BatteryReport frame;
             if (!xenta_protocol::ParseBatteryReport(l.last, frame)) continue;
             BYTE code = frame.model, st = frame.state, level = frame.level;

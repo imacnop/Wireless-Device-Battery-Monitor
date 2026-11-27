@@ -231,6 +231,7 @@ struct HeadsetModel {
 
 const HeadsetModel kHeadsets[] = {
     { 0x1B84, L"ROG Pelta" },
+    { 0x1B82, L"ROG Pelta" },  // on its USB cable, same collection (pelta-control); untested here
     { 0x1AFA, L"ROG Delta II" },
 };
 
@@ -270,10 +271,11 @@ void PollPelta(PollContext& ctx) {
             Reply res = PeltaQuery(d, 0x07, r);
             if (res == Reply::None) continue;
             DeviceStatus s;
-            s.key = L"rog:" + Hex4(hs.pid) + L":hs";
+            // Dongle and cable are one headset: one key, so it is not listed twice.
+            s.key = L"rog:" + Hex4(hs.pid == 0x1B82 ? 0x1B84 : hs.pid) + L":hs";
             s.name = hs.name;
             s.kind = DeviceKind::Headset;
-            s.via = L"2.4 GHz receiver";
+            s.via = hs.pid == 0x1B82 ? L"USB cable" : L"2.4 GHz receiver";
             if (res == Reply::Asleep) {
                 s.asleep = true;
             } else {
@@ -282,8 +284,10 @@ void PollPelta(PollContext& ctx) {
                 std::vector<BYTE> ch;
                 if (PeltaQuery(d, 0x08, ch) == Reply::Ok) s.charging = ch[5] == 1;
             }
-            ctx.out.push_back(s);
             ctx.Claim(0x0B05, hs.pid);
+            bool dup = false;
+            for (const auto& o : ctx.out) dup = dup || o.key == s.key;
+            if (!dup) ctx.out.push_back(s);
             break;
         }
     }

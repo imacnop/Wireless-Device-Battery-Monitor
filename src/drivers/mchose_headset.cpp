@@ -10,6 +10,11 @@
 //   Read battery: [55][AA 01 00 01 00 01 0B 00 ...] (read-only). The reply, and the headset's own
 //   battery notification (sub-command 0x22), carry body[0] = 0 when the headset is off or asleep,
 //   otherwise body[1] = charging (bit 7) | percent (bits 0..6).
+//
+// MCHOSE X9 (dongle 3837:6045) and V9 Turbo+ (3837:600A) use a simpler read on FF90:0001, report 55,
+// 64 bytes each way: request 55 65 01, reply 55 65 <percent> 02 (byte 3 names the field, 02 = battery).
+// No charging state. From HeadsetControl (lib/devices/mchose_x9.hpp, a capture of M HUB); the V9 Turbo+
+// answer was confirmed on the headset in HaloBattery issue #193. Not tested here.
 #include "drivers.h"
 
 namespace {
@@ -68,9 +73,57 @@ Reply QueryV9Pro2(const HidColl& c, int& percent, bool& charging) {
     return Reply::None;
 }
 
+struct X9Model { USHORT pid; const wchar_t* key; const wchar_t* name; };
+const X9Model kX9Models[] = {
+    { 0x6045, L"mchose:x9", L"MCHOSE X9" },
+    { 0x600A, L"mchose:v9turbo", L"MCHOSE V9 Turbo+" },
+};
+
+bool QueryX9(const HidColl& c, int& percent) {
+    HidDev d;
+    if (!d.Open(c)) return false;
+    d.Flush();
+    if (!d.Write({ kReportId, 0x65, 0x01 })) return false;
+    std::vector<BYTE> r;
+    ULONGLONG end = GetTickCount64() + 1500;
+    while ((LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
+        int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
+        if (d.Read(r, left) < 0) break;
+        if (r.size() >= 4 && r[0] == kReportId && r[1] == 0x65 && r[3] == 0x02 && r[2] <= 100) {
+            percent = r[2];
+            return true;
+        }
+    }
+    return false;
+}
+
+void PollMchoseX9(PollContext& ctx) {
+    for (const X9Model& m : kX9Models) {
+        if (ctx.IsClaimed(kMchoseVid, m.pid)) continue;
+        auto colls = ctx.Find(kMchoseVid, m.pid, [](const HidColl& c) {
+            return c.page() == 0xFF90 && c.usage() == 0x0001 && c.inLen() == 64 && c.outLen() == 64;
+        });
+        if (colls.empty()) continue;
+        DeviceStatus s;
+        s.key = m.key;
+        s.name = m.name;
+        s.kind = DeviceKind::Headset;
+        s.via = L"2.4 GHz receiver";
+        s.graceSec = 600;
+        int pct = -1;
+        bool ok = false;
+        for (const HidColl* c : colls)
+            if ((ok = QueryX9(*c, pct))) break;
+        if (ok) s.percent = pct;
+        else s.connected = false;  // dongle present, headset off
+        ctx.Add(s, kMchoseVid, m.pid);
+    }
+}
+
 }  // namespace
 
 void PollMchoseHeadset(PollContext& ctx) {
+    PollMchoseX9(ctx);
     if (ctx.IsClaimed(kMchoseVid, kV9Pro2Pid)) return;
     for (const HidColl* c : ctx.Find(kMchoseVid, kV9Pro2Pid, [](const HidColl& c) {
              return c.page() == 0xFF07 && c.usage() == 0x0222 && c.outLen() >= 64 && c.inLen() >= 64;

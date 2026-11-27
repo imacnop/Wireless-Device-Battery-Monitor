@@ -80,6 +80,7 @@ constexpr Hidv1Model kHidv1Models[] = {
     { 0x205C, 5, 0, L"JBL Quantum 610 Wireless" },
     { 0x2115, 5, 0x0001, L"JBL Quantum 360 Wireless" },
     { 0x2069, 5, 0, L"JBL Quantum 810 Wireless" },  // its interface 5 collection is FF13:0001
+    { 0x203E, 5, 0, L"JBL Quantum 800" },  // FF00:0001 on interface 5; read on hardware for ferloom/Wireless-Device-Battery-Monitor
 };
 
 void PollHidv1(PollContext& ctx) {

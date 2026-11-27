@@ -16,6 +16,12 @@
 // From github.com/donglover69/sonix-keyboard-studio (README, "2.4G dongles"); the AK820 Pro receiver
 // 0C45:FDFD and the echo match from github.com/deddroid/ak820-rs (src/device.rs, src/protocol.rs) and
 // github.com/usharik/ak820-studio (Sources/AK820Kit/Keyboard.swift).
+//
+// The 0C45:FEFC receiver (AULA F87 Pro V2C, AJAZZ AK820 MAX) speaks AULA HUB's read instead, on FF80:0001,
+// 33-byte reports: request AA 10, reply 55 10 .. with the level (1..100) at payload byte 25; no charging
+// state. From HaloBattery (providers/aula.py), confirmed there on an F87 Pro V2C; untested here.
+#include <cwctype>
+
 #include "drivers.h"
 
 namespace {
@@ -83,9 +89,54 @@ std::wstring KeyboardName(const HidColl& c) {
     return name.empty() ? L"Wireless keyboard" : name;
 }
 
+int QueryFefc(HidDev& d) {
+    std::vector<BYTE> req(1 + kLen, 0);
+    req[1] = 0xAA;
+    req[2] = 0x10;
+    d.Flush();
+    if (!d.Write(req)) return -1;
+    ULONGLONG end = GetTickCount64() + 750;
+    for (;;) {
+        int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
+        if (left <= 0) return -1;
+        std::vector<BYTE> r;
+        if (d.Read(r, left) < 0) return -1;
+        if (r.size() > 25 && r[0] == 0x55 && r[1] == 0x10 && r[25] >= 1 && r[25] <= 100) return r[25];
+    }
+}
+
+void PollFefc(PollContext& ctx) {
+    const USHORT vid = 0x0C45, pid = 0xFEFC;
+    if (ctx.IsClaimed(vid, pid)) return;
+    for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) {
+             return c.page() == 0xFF80 && c.usage() == 0x0001 && c.outLen() == 1 + kLen && c.inLen() == 1 + kLen;
+         })) {
+        HidDev d;
+        if (!d.Open(*c)) continue;
+        int level = QueryFefc(d);
+        if (level < 0) level = QueryFefc(d);
+        if (level < 0) continue;  // asleep or off: the app keeps the last value of a known device
+        DeviceStatus s;
+        s.key = L"sonix:0C45:FEFC";
+        s.name = KeyboardName(*c);
+        std::wstring lower = s.name;
+        for (auto& ch : lower) ch = (wchar_t)towlower(ch);
+        if (lower.find(L"dongle") != std::wstring::npos || lower.find(L"receiver") != std::wstring::npos ||
+            lower.find(L"2.4g") != std::wstring::npos)
+            s.name = L"Wireless keyboard";
+        s.kind = DeviceKind::Keyboard;
+        s.via = L"2.4 GHz receiver";
+        s.percent = level;
+        s.graceSec = 1800;
+        ctx.Add(s, vid, pid);
+        break;
+    }
+}
+
 }  // namespace
 
 void PollSonix(PollContext& ctx) {
+    PollFefc(ctx);
     for (const Dongle& m : kDongles) {
         if (ctx.IsClaimed(m.vid, m.pid)) continue;
         for (const HidColl* c : ctx.Find(m.vid, m.pid, [&m](const HidColl& c) {
