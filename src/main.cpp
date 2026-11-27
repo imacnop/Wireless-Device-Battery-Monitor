@@ -1458,7 +1458,19 @@ bool FindVendorApp(const DeviceStatus& s, VendorApp& app) {
         return true;
     };
     if (s.key.rfind(L"wraithw1", 0) == 0) { app = { L"Wraith web driver", L"https://www.w1.software/" }; return true; }
-    switch (s.vid) {
+    // Some drivers (Logitech HID++) leave the vendor id unset: fall back to the brand from the key or name.
+    USHORT vid = s.vid;
+    if (!vid) {
+        switch (BrandOf(s)) {
+            case Accent::Logitech: vid = 0x046D; break;
+            case Accent::Razer: vid = 0x1532; break;
+            case Accent::Corsair: vid = 0x1B1C; break;
+            case Accent::SteelSeries: vid = 0x1038; break;
+            case Accent::Rog: vid = 0x0B05; break;
+            default: break;
+        }
+    }
+    switch (vid) {
         case 0x046D: return program(L"Logitech G HUB", { L"%ProgramFiles%\\LGHUB\\lghub.exe" }, L"https://www.logitechg.com/innovation/g-hub.html");
         case 0x1532: return program(L"Razer Synapse", { L"%ProgramFiles%\\Razer\\RazerAppEngine\\RazerAppEngine.exe",
                                                         L"%ProgramFiles(x86)%\\Razer\\Synapse3\\WPFUI\\Framework\\Razer Synapse 3 Host\\Razer Synapse 3.exe" },
